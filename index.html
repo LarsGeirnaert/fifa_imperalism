@@ -313,32 +313,32 @@
                 </div>
             </div>
 
-            <!-- Preset & Settings Row -->
+            <!-- Save & Settings Row -->
             <div class="mt-3 flex flex-col gap-2">
-                <div class="flex items-center gap-2">
-                    <label class="text-xs text-slate-300 font-semibold whitespace-nowrap"><i
-                            class="fa-solid fa-earth-europe mr-1 text-sky-400"></i>Map Preset:</label>
-                    <select id="preset-select"
-                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-400">
-                        <option value="all">🌍 Alle EA FC 26 Teams (115+ Clubs)</option>
-                        <option value="belgium">🇧🇪 België — Jupiler Pro League (16 Clubs)</option>
-                        <option value="benelux">🦁 BeNeLux Battle (België + Nederland)</option>
-                        <option value="europe">🏆 Europa Top Competities (~95 Clubs)</option>
-                        <option value="uk">🏴󠁧󠁢󠁥󠁮󠁧󠁿 UK & Premier League (24 Clubs)</option>
-                    </select>
-                </div>
+                <button id="btn-open-saves"
+                    class="w-full flex items-center justify-between gap-2 bg-slate-950 border border-slate-700 hover:border-amber-400 rounded-lg px-2.5 py-1.5 text-left transition">
+                    <span class="flex items-center gap-2 min-w-0">
+                        <i class="fa-solid fa-floppy-disk text-amber-400"></i>
+                        <span class="min-w-0">
+                            <span id="save-name-label" class="block text-xs font-bold text-white truncate">Geen save
+                                gekozen</span>
+                            <span id="save-meta-label" class="block text-[10px] text-slate-400 truncate"></span>
+                        </span>
+                    </span>
+                    <span class="flex items-center gap-2 shrink-0">
+                        <span id="save-status" class="text-[10px] text-slate-500 font-bold whitespace-nowrap"></span>
+                        <span class="text-[10px] font-bold text-amber-400 uppercase">Saves</span>
+                    </span>
+                </button>
 
                 <div
                     class="flex items-center justify-between gap-2 text-xs bg-slate-950/50 px-2.5 py-1.5 rounded-lg border border-slate-800">
-                    <label for="chk-neutral" class="flex items-center gap-2 cursor-pointer text-slate-300 font-medium">
-                        <input type="checkbox" id="chk-neutral" checked class="rounded accent-emerald-500 w-3.5 h-3.5">
-                        <span>Vrije gebieden (upgrade per land)</span>
-                    </label>
                     <label for="chk-clip" class="flex items-center gap-2 cursor-pointer text-slate-300 font-medium"
                         title="Knip gebieden uit volgens echte landsgrenzen">
                         <input type="checkbox" id="chk-clip" checked class="rounded accent-amber-400 w-3.5 h-3.5">
                         <span>Landgrenzen</span>
                     </label>
+                    <span class="text-[10px] text-slate-500">Elke wedstrijd wordt automatisch bewaard</span>
                 </div>
             </div>
         </div>
@@ -379,10 +379,16 @@
                 <div class="flex items-center justify-between">
                     <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Wedstrijd
                         Generator</span>
-                    <button id="btn-fit-all"
-                        class="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1">
-                        <i class="fa-solid fa-expand"></i> Overzicht
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button id="btn-undo" disabled title="Laatste wedstrijd ongedaan maken"
+                            class="text-[11px] text-rose-300 hover:text-rose-200 font-semibold flex items-center gap-1 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <i class="fa-solid fa-rotate-left"></i> Ongedaan
+                        </button>
+                        <button id="btn-fit-all"
+                            class="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1">
+                            <i class="fa-solid fa-expand"></i> Overzicht
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Step 1: Roll Attacker -->
@@ -507,7 +513,7 @@
                 <p class="text-slate-300 leading-relaxed">
                     Importeer je eigen <code class="text-amber-300">.json</code> bestand (zoals <code
                         class="text-amber-300">belgian_teams.json</code> of alle 700+ EA FC 26 clubs) of download de
-                    huidige lijst.
+                    huidige lijst. Een import maakt een <b>nieuwe save</b>; je huidige save blijft bewaard.
                 </p>
 
                 <label
@@ -530,13 +536,89 @@
                 <div class="pt-2 border-t border-slate-800">
                     <button id="btn-reset-game"
                         class="w-full py-2 px-3 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold flex items-center justify-center gap-2 transition">
-                        <i class="fa-solid fa-rotate-right"></i> Reset Volledige Game
+                        <i class="fa-solid fa-rotate-right"></i> Herstart deze save (met back-up)
                     </button>
                 </div>
             </div>
 
         </div>
     </aside>
+
+    <!-- SAVE MENU (startscherm: kies een save of begin een nieuwe) -->
+    <div id="save-menu"
+        class="fixed inset-0 z-[2000] hidden items-start justify-center bg-slate-950/95 backdrop-blur-sm overflow-y-auto p-3">
+        <div class="w-full max-w-xl my-auto bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between">
+                <h2 class="font-broadcast text-2xl font-extrabold text-white"><i
+                        class="fa-solid fa-floppy-disk text-amber-400 mr-2"></i>Saves</h2>
+                <button id="sm-close" class="hidden text-xs text-slate-300 hover:text-white underline">Terug naar
+                    game</button>
+            </div>
+
+            <div>
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Verder spelen</div>
+                <div id="sm-list" class="space-y-2"></div>
+            </div>
+
+            <div class="border-t border-slate-800 pt-3 space-y-2">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Nieuwe save</div>
+                <input id="ns-name" type="text" maxlength="40" placeholder="Naam van de save" autocomplete="off"
+                    class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
+                <select id="preset-select"
+                    class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-2 text-xs font-semibold text-white focus:outline-none focus:border-amber-400">
+                    <option value="all">🌍 Alle EA FC 26 Teams (115+ Clubs)</option>
+                    <option value="belgium">🇧🇪 België — Jupiler Pro League (16 Clubs)</option>
+                    <option value="benelux">🦁 BeNeLux Battle (België + Nederland)</option>
+                    <option value="europe">🏆 Europa Top Competities (~95 Clubs)</option>
+                    <option value="uk">🏴󠁧󠁢󠁥󠁮󠁧󠁿 UK & Premier League (24 Clubs)</option>
+                </select>
+                <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-slate-300 font-medium">
+                    <label for="chk-neutral" class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="chk-neutral" checked class="rounded accent-emerald-500 w-4 h-4">
+                        <span>Vrije gebieden (upgrade per land)</span>
+                    </label>
+                    <label for="ns-clip" class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="ns-clip" checked class="rounded accent-amber-400 w-4 h-4">
+                        <span>Landgrenzen</span>
+                    </label>
+                </div>
+                <button id="ns-create"
+                    class="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-broadcast text-base font-extrabold uppercase tracking-wider shadow-lg disabled:opacity-50">
+                    <i class="fa-solid fa-plus mr-1"></i>Start nieuwe save
+                </button>
+                <div id="ns-status" class="hidden text-xs text-amber-300 text-center"></div>
+            </div>
+
+            <div class="border-t border-slate-800 pt-3">
+                <label
+                    class="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 cursor-pointer transition">
+                    <i class="fa-solid fa-file-import"></i> Importeer back-upbestand (.json)
+                    <input type="file" id="sm-import" accept="application/json,.json" class="hidden">
+                </label>
+                <p class="mt-2 text-[10px] text-slate-500 leading-snug">
+                    Je saves staan in de browser van dit toestel. Exporteer af en toe een bestand als extra
+                    zekerheid (bv. na elke 10 wedstrijden) en bewaar het in je cloud of mail het naar jezelf.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- BACK-UPS VAN EEN SAVE -->
+    <div id="backup-modal"
+        class="fixed inset-0 z-[2200] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-3">
+        <div
+            class="w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
+            <div class="flex items-center justify-between mb-2">
+                <h3 id="bm-title" class="font-broadcast text-xl font-extrabold text-white">Back-ups</h3>
+                <button id="bm-close" class="text-xs text-slate-300 hover:text-white underline">Sluiten</button>
+            </div>
+            <p class="text-[11px] text-slate-400 mb-2 leading-snug">
+                Voor elke wedstrijd wordt automatisch een back-up gemaakt. Herstellen bewaart eerst je huidige
+                stand, dus je kunt altijd weer terug.
+            </p>
+            <div id="bm-list" class="overflow-y-auto space-y-1.5 text-xs"></div>
+        </div>
+    </div>
 
     <!-- SPELER-TRANSFER MODAL (verschijnt na elke gewonnen club-wedstrijd) -->
     <div id="transfer-modal"
@@ -1352,7 +1434,6 @@
             set("belgium", `\u{1F1E7}\u{1F1EA} Belgi\u00eb \u2014 Jupiler Pro League (${n(c => c.league === "belgium")} Clubs)`);
             set("europe", `\u{1F3C6} Europa Top Competities (${n(c => c.league !== "world")} Clubs)`);
             set("uk", `\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} UK & Premier League (${n(c => c.league === "uk")} Clubs)`);
-            refreshPresetBadges();
         }
 
         /* ============================================================================
@@ -1383,9 +1464,13 @@
         let saveEnabled = false;
         let lastPreset = "all";
         let pendingTransfer = null;
-        const SAVE_KEY = "eafc26_imperialism_save_v1";      // oude save (wordt gemigreerd)
-        const SLOTS_KEY = "eafc26_imperialism_slots_v2";    // { active, slots: { [preset]: save } }
-        let customSource = false;                            // true na JSON-import (clubs komen niet uit een preset)
+        let customSource = false;                            // true bij eigen teams (JSON), anders komen de clubs uit een preset
+        let activeSaveId = null;                             // id van de save waarin nu gespeeld wordt
+        let activeSaveName = "";
+        let activeCreatedAt = Date.now();
+        let BACKUPS = [];                                    // automatische back-ups van de actieve save
+        let saveFailedWarned = false;
+        let landmassPromise = null;
 
         const $ = id => document.getElementById(id);
         const byId = id => TEAMS.find(t => t.id === id);
@@ -2051,6 +2136,7 @@
 
             // Case 1: Neutral Zone Annexation -> Free Squad Upgrade
             if (def.isNeutral) {
+                makeBackup(`Voor ronde ${state.turn}: ${att.name} claimt ${def.name}`);
                 att.upgrades = (att.upgrades || 0) + 1;
                 addLog(
                     `Ronde ${state.turn}: <b class="text-amber-300">${esc(att.name)}</b> nam <span class="text-emerald-400">${esc(def.name)}</span> in en kreeg een <b>+1 Free Squad Upgrade</b>!`
@@ -2295,6 +2381,7 @@
             if (!winner || !loser) { closeTransferModal(); return; }
             closeTransferModal();
 
+            makeBackup(`Voor ronde ${state.turn}: ` + (pt.score ? scoreText(pt) : `${winner.name} \u2013 ${loser.name}`));
             winner.wins = (winner.wins || 0) + 1;
             let scoreHtml = "";
             if (pt.score) {
@@ -2326,6 +2413,9 @@
             annexTerritory(winner.id, loser.id);
             closeModal();
             checkVictory(winner);
+            if (state.matches.length > 0 && state.matches.length % 10 === 0) {
+                toast(`\u{1F4BE} ${state.matches.length} wedstrijden gespeeld \u2014 tip: exporteer een back-upbestand via Saves.`, 7000);
+            }
         }
 
         function renderPlayers() {
@@ -2378,19 +2468,86 @@
             clearTimeout(saveTimer);
             saveTimer = setTimeout(saveNow, 120);
         }
-        function readSlots() {
-            try {
-                const raw = localStorage.getItem(SLOTS_KEY);
-                if (raw) {
-                    const o = JSON.parse(raw);
-                    if (o && o.slots) return o;
-                }
-            } catch (err) { }
-            return { active: null, slots: {} };
+        /* ============================================================================
+           SAVES: meerdere saves, automatische back-ups, export/import
+           ============================================================================ */
+        const IDX_KEY = "eafc26_saves_index_v3";
+        const SAVE_PREFIX = "eafc26_save_v3_";
+        const MAX_BACKUPS = 25;
+        const PRESET_NAMES = { all: "Alle teams", belgium: "Belgi\u00eb", benelux: "BeNeLux", europe: "Europa", uk: "UK & Premier League" };
+        const clone = o => JSON.parse(JSON.stringify(o));
+        const newSaveId = () => "s" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+
+        function toast(msg, ms = 3500) {
+            let el = document.getElementById("toast-box");
+            if (!el) {
+                el = document.createElement("div");
+                el.id = "toast-box";
+                el.className = "fixed left-1/2 -translate-x-1/2 bottom-5 z-[3000] max-w-[92vw] px-4 py-2.5 rounded-xl bg-slate-900 border border-amber-400/60 text-amber-200 text-xs font-bold shadow-2xl text-center";
+                el.style.transition = "opacity 0.3s";
+                document.body.appendChild(el);
+            }
+            el.textContent = msg;
+            el.style.opacity = "1";
+            clearTimeout(el._t);
+            el._t = setTimeout(() => { el.style.opacity = "0"; }, ms);
         }
+
+        function readIndex() {
+            try {
+                const o = JSON.parse(localStorage.getItem(IDX_KEY));
+                if (o && Array.isArray(o.order) && o.meta) return o;
+            } catch (err) { }
+            return { active: null, order: [], meta: {} };
+        }
+        function writeIndex(ix) {
+            try { localStorage.setItem(IDX_KEY, JSON.stringify(ix)); return true; } catch (err) { return false; }
+        }
+        function readSave(id) {
+            try {
+                const sv = JSON.parse(localStorage.getItem(SAVE_PREFIX + id));
+                return sv && Array.isArray(sv.teams) && sv.st ? sv : null;
+            } catch (err) { return null; }
+        }
+        function metaOf(sv) {
+            return {
+                id: sv.id,
+                name: sv.name,
+                preset: sv.preset,
+                custom: !!(sv.custom && sv.custom.length),
+                enableNeutral: sv.enableNeutral !== false,
+                enableClip: sv.enableClip !== false,
+                round: (sv.st && sv.st.turn) || 1,
+                matches: (sv.matches || []).length,
+                backups: (sv.backups || []).length,
+                createdAt: sv.createdAt || sv.savedAt || Date.now(),
+                savedAt: sv.savedAt || Date.now()
+            };
+        }
+        function writeSave(sv) {
+            try {
+                localStorage.setItem(SAVE_PREFIX + sv.id, JSON.stringify(sv));
+                const ix = readIndex();
+                ix.meta[sv.id] = metaOf(sv);
+                if (!ix.order.includes(sv.id)) ix.order.push(sv.id);
+                writeIndex(ix);
+                return true;
+            } catch (err) {
+                console.warn("Opslaan mislukt", err);
+                if (!saveFailedWarned) {
+                    saveFailedWarned = true;
+                    toast("\u26A0\uFE0F Opslaan mislukt (opslag vol of geblokkeerd)! Exporteer nu een back-up via Saves.", 10000);
+                }
+                return false;
+            }
+        }
+
         function snapshotCurrent() {
             return {
-                v: 2,
+                v: 3,
+                id: activeSaveId,
+                name: activeSaveName,
+                createdAt: activeCreatedAt,
                 savedAt: Date.now(),
                 preset: lastPreset,
                 custom: customSource ? SOURCE_CLUBS : null,
@@ -2400,38 +2557,114 @@
                 teams: TEAMS,
                 players: state.players,
                 matches: state.matches,
-                log: LOG
+                log: LOG,
+                backups: BACKUPS
             };
         }
         function saveNow() {
-            if (!saveEnabled || !TEAMS.length) return;
-            try {
-                const store = readSlots();
-                store.active = lastPreset;
-                store.slots[lastPreset] = snapshotCurrent();
-                localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
-            } catch (err) {
-                console.warn("Opslaan mislukt", err);
+            if (!saveEnabled || !activeSaveId || TEAMS.length < 3) return;
+            const ok = writeSave(snapshotCurrent());
+            const el = $("save-status");
+            if (el) {
+                const d = new Date();
+                const hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
+                el.textContent = ok ? `\u2713 ${hh}:${mm}` : "\u26A0 niet bewaard";
+                el.className = (ok ? "text-emerald-400" : "text-red-400") + " text-[10px] font-bold whitespace-nowrap";
             }
-            refreshPresetBadges();
+            if (ok) {
+                const ix = readIndex();
+                if (ix.active !== activeSaveId) { ix.active = activeSaveId; writeIndex(ix); }
+            }
         }
-        /** Zet bij elke mode in de dropdown erbij hoeveel rondes er al gespeeld zijn */
-        function refreshPresetBadges() {
-            const slots = readSlots().slots;
-            document.querySelectorAll("#preset-select option").forEach(o => {
-                if (o.dataset.base === undefined) o.dataset.base = o.textContent;
-                const sv = slots[o.value];
-                const rounds = sv && sv.st ? (sv.st.turn || 1) - 1 : 0;
-                o.textContent = rounds > 0 ? `${o.dataset.base}  \u25B6 ronde ${rounds + 1}` : o.dataset.base;
+        function flushSave() {
+            clearTimeout(saveTimer);
+            saveNow();
+        }
+
+        /* ---- Automatische back-ups (compact: alleen de veranderlijke velden per team) ---- */
+        function buildBackup(teams, turn, over, players, matches, log, label, kind, full) {
+            return {
+                at: Date.now(),
+                kind,
+                label,
+                turn,
+                over: !!over,
+                dyn: teams.map(t => [t.ownerId, t.isActive ? 1 : 0, t.upgrades || 0, t.wins || 0]),
+                players: clone(players || []),
+                matches: clone(matches || []),
+                logLen: (log || []).length,
+                log: full ? (log || []).slice() : undefined
+            };
+        }
+        function makeBackup(label, kind = "match", full = false) {
+            if (!activeSaveId || !TEAMS.length) return;
+            BACKUPS.push(buildBackup(TEAMS, state.turn, state.over, state.players, state.matches, LOG, label, kind, full));
+            while (BACKUPS.length > MAX_BACKUPS) BACKUPS.shift();
+        }
+        /** Zet een back-up terug in een save-object (opgeslagen save). Bewaart eerst de huidige stand als veiligheidsback-up. */
+        function restoreBackupObj(sv, idx, removeUsed) {
+            const b = (sv.backups || [])[idx];
+            if (!b || !Array.isArray(b.dyn) || b.dyn.length !== sv.teams.length) return false;
+            sv.backups.push(buildBackup(sv.teams, sv.st.turn, sv.st.over, sv.players, sv.matches, sv.log || [], `Voor herstel (${b.label})`, "safety", true));
+            sv.teams.forEach((t, i) => {
+                const d = b.dyn[i];
+                t.ownerId = d[0];
+                t.isActive = !!d[1];
+                t.upgrades = d[2];
+                t.wins = d[3];
             });
+            sv.st = { attacker: null, defender: null, turn: b.turn, over: !!b.over };
+            sv.players = clone(b.players || []);
+            sv.matches = clone(b.matches || []);
+            const curLog = sv.log || [];
+            sv.log = b.log ? b.log.slice() : curLog.slice(Math.max(0, curLog.length - (b.logLen || 0)));
+            if (removeUsed) {
+                const at = sv.backups.indexOf(b);
+                if (at >= 0) sv.backups.splice(at, 1);
+            }
+            while (sv.backups.length > MAX_BACKUPS) sv.backups.shift();
+            sv.savedAt = Date.now();
+            return true;
         }
-        function hasProgress() {
-            return state.turn > 1 || state.players.length > 0;
+        function restoreBackup(id, idx, removeUsed) {
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv) { toast("Save niet gevonden."); return false; }
+            if (!restoreBackupObj(sv, idx, removeUsed)) { toast("Deze back-up past niet bij de kaart van deze save."); return false; }
+            if (!writeSave(sv)) return false;
+            if (id === activeSaveId) applySave(sv);
+            return true;
         }
-        function confirmWipe(msg) {
-            if (!hasProgress()) return true;
-            return confirm(`${msg}\n\nJe huidige game (${state.turn - 1} ronde(s), ${state.players.length} speler(s)) gaat dan verloren.`);
+        function undoLastMatch() {
+            if (!activeSaveId) return;
+            let idx = -1;
+            for (let i = BACKUPS.length - 1; i >= 0; i--) if (BACKUPS[i].kind === "match") { idx = i; break; }
+            if (idx < 0) { toast("Niets om ongedaan te maken."); return; }
+            const label = BACKUPS[idx].label;
+            if (!confirm(`Laatste wedstrijd ongedaan maken?\n\n${label}\n\nJe huidige stand wordt eerst bewaard in de back-ups.`)) return;
+            if (restoreBackup(activeSaveId, idx, true)) toast("\u21B6 Laatste wedstrijd ongedaan gemaakt");
         }
+        function resetCurrentSave() {
+            if (!activeSaveId || !TEAMS.length) return;
+            const typed = prompt(`"${activeSaveName}" herstarten?\n\nAlle rondes, scores, spelers en de kaartstand worden gewist. Er wordt eerst automatisch een back-up gemaakt (Saves \u2192 Back-ups).\n\nTyp HERSTART om te bevestigen:`);
+            if (typed === null) return;
+            if (typed.trim().toUpperCase() !== "HERSTART") { toast("Niet bevestigd \u2014 er is niets gewist."); return; }
+            makeBackup("Voor herstart", "safety", true);
+            for (const t of TEAMS) { t.ownerId = t.id; t.isActive = true; t.upgrades = 0; t.wins = 0; }
+            state.attacker = null; state.defender = null; state.turn = 1; state.over = false;
+            state.players = []; state.matches = []; LOG = [];
+            pendingTransfer = null;
+            $("transfer-modal").classList.add("hidden");
+            $("transfer-modal").classList.remove("flex");
+            $("inspector-card").classList.add("hidden");
+            $("tab-log").innerHTML = `<div class="text-slate-500 italic text-center py-6">Save herstart.</div>`;
+            empireCache.clear();
+            render();
+            fitToClubs();
+            flushSave();
+            toast("Save herstart \u2014 de oude stand staat in de back-ups");
+        }
+
         function renderLogFromArray() {
             const box = $("tab-log");
             if (!LOG.length) {
@@ -2453,23 +2686,23 @@
             const lngs = realClubs.map(t => t.lng);
             map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [45, 45] });
         }
-        /** Laad een opgeslagen game-slot (van een mode) in het scherm. */
-        function applySave(sv, presetKey) {
+        /** Laad een opgeslagen save in het scherm. */
+        function applySave(sv) {
             if (!sv || !Array.isArray(sv.teams) || sv.teams.length < 3 || !sv.st) return false;
+            activeSaveId = sv.id;
+            activeSaveName = sv.name || "Save";
+            activeCreatedAt = sv.createdAt || Date.now();
+            BACKUPS = Array.isArray(sv.backups) ? sv.backups : [];
             state.enableNeutral = sv.enableNeutral !== false;
             state.enableClip = sv.enableClip !== false;
-            $("chk-neutral").checked = state.enableNeutral;
             $("chk-clip").checked = state.enableClip;
-            lastPreset = presetKey;
-            if (document.querySelector(`#preset-select option[value="${presetKey}"]`)) {
-                $("preset-select").value = presetKey;
-            }
+            lastPreset = sv.preset || "all";
             if (Array.isArray(sv.custom) && sv.custom.length) {
                 customSource = true;
                 SOURCE_CLUBS = sv.custom;
             } else {
                 customSource = false;
-                SOURCE_CLUBS = presetClubs(presetKey);
+                SOURCE_CLUBS = presetClubs(lastPreset);
             }
             TEAMS = sv.teams;
             state.attacker = sv.st.attacker || null;
@@ -2485,35 +2718,280 @@
             $("inspector-card").classList.add("hidden");
             if (LOG.length) renderLogFromArray();
             else $("tab-log").innerHTML = `<div class="text-slate-500 italic text-center py-6">Nog geen wedstrijden gespeeld.</div>`;
+            lastScoreKey = null;
             empireCache.clear();
             buildGeometry();
             render();
             fitToClubs();
+            updateSaveLabel();
             return true;
         }
 
-        /** Herstel bij het opstarten: eerst de v2-slots, anders de oude v1-save. */
-        function tryRestore() {
-            const store = readSlots();
-            if (store.active && store.slots[store.active] && applySave(store.slots[store.active], store.active)) return true;
-            let raw = null;
-            try { raw = localStorage.getItem(SAVE_KEY); } catch (err) { return false; }
-            if (!raw) return false;
-            let sv;
-            try { sv = JSON.parse(raw); } catch (err) { return false; }
-            return applySave(sv, sv && sv.preset ? sv.preset : "all");
+        function updateSaveLabel() {
+            const n = $("save-name-label");
+            if (!n) return;
+            n.textContent = activeSaveId ? activeSaveName : "Geen save gekozen";
+            const mode = customSource ? "Eigen teams" : (PRESET_NAMES[lastPreset] || lastPreset);
+            $("save-meta-label").textContent = activeSaveId ? `${mode} \u2022 vrije gebieden ${state.enableNeutral ? "aan" : "uit"}` : "";
         }
 
-        /** Wissel van mode: huidige game blijft bewaard, de gekozen mode wordt hervat of nieuw gestart. */
-        function switchPreset(presetKey) {
-            if (presetKey === lastPreset) return;
-            saveNow();                                   // huidige mode veilig opslaan
-            const sv = readSlots().slots[presetKey];
-            if (sv && applySave(sv, presetKey)) return;  // vorige game van deze mode hervat
-            lastPreset = presetKey;
-            customSource = false;
-            SOURCE_CLUBS = presetClubs(presetKey);
+        /** Eenmalig: oude saves (v1 / v2 per-mode) omzetten naar het nieuwe systeem. De oude data blijft staan. */
+        function migrateOldSaves() {
+            if (readIndex().order.length) return;
+            const found = [];
+            try {
+                const raw = localStorage.getItem("eafc26_imperialism_slots_v2");
+                if (raw) {
+                    const o = JSON.parse(raw);
+                    for (const [k, sv] of Object.entries(o.slots || {})) found.push({ key: k, sv, active: o.active === k });
+                }
+            } catch (err) { }
+            if (!found.length) {
+                try {
+                    const raw = localStorage.getItem("eafc26_imperialism_save_v1");
+                    if (raw) { const sv = JSON.parse(raw); found.push({ key: (sv && sv.preset) || "all", sv, active: true }); }
+                } catch (err) { }
+            }
+            for (const f of found) {
+                const sv = f.sv;
+                if (!sv || !Array.isArray(sv.teams) || sv.teams.length < 3 || !sv.st) continue;
+                const id = newSaveId();
+                const obj = {
+                    ...sv, v: 3, id,
+                    name: `${PRESET_NAMES[f.key] || f.key} (overgenomen)`,
+                    createdAt: sv.savedAt || Date.now(),
+                    preset: sv.preset || f.key,
+                    matches: Array.isArray(sv.matches) ? sv.matches : [],
+                    backups: []
+                };
+                writeSave(obj);
+                if (f.active) { const ix = readIndex(); ix.active = id; writeIndex(ix); }
+            }
+        }
+
+        /* ---- Kaartgegevens (landgrenzen) ---- */
+        async function loadLandmass() {
+            try {
+                const res = await fetch("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson");
+                if (res.ok) { landmassGeoJSON = await res.json(); return true; }
+            } catch (err) {
+                console.warn("Kon wereldgrenzen niet ophalen, gebruikt standaard Voronoi-grenzen.", err);
+            }
+            return false;
+        }
+        function ensureLandmass() {
+            if (landmassGeoJSON) return Promise.resolve(true);
+            if (!landmassPromise) {
+                landmassPromise = loadLandmass().then(ok => { if (!ok) landmassPromise = null; return ok; });
+            }
+            return landmassPromise;
+        }
+
+        /* ---- Nieuwe save / openen ---- */
+        async function createSave(opts) {
+            const src = opts.custom && opts.custom.length ? opts.custom : presetClubs(opts.preset);
+            if (!src || src.length < 3) { toast("Minstens 3 teams nodig."); return false; }
+            const btn = $("ns-create"), st = $("ns-status");
+            btn.disabled = true;
+            if (opts.enableClip && !landmassGeoJSON) {
+                st.textContent = "Kaartgegevens laden\u2026";
+                st.classList.remove("hidden");
+                await ensureLandmass();
+            }
+            st.classList.add("hidden");
+            btn.disabled = false;
+
+            if (activeSaveId) flushSave();                 // huidige save eerst veilig wegschrijven
+            activeSaveId = newSaveId();
+            activeSaveName = opts.name;
+            activeCreatedAt = Date.now();
+            BACKUPS = [];
+            lastPreset = opts.preset;
+            customSource = !!(opts.custom && opts.custom.length);
+            SOURCE_CLUBS = src;
+            state.enableNeutral = opts.enableNeutral;
+            state.enableClip = opts.enableClip;
+            $("chk-clip").checked = state.enableClip;
+            saveEnabled = true;
+            lastScoreKey = null;
             startGame(SOURCE_CLUBS);
+            updateSaveLabel();
+            flushSave();
+            closeSaveMenu();
+            toast(`Nieuwe save "${activeSaveName}" gestart`);
+            return true;
+        }
+
+        function openSaveById(id) {
+            if (id === activeSaveId && TEAMS.length) { closeSaveMenu(); return; }
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv || !applySave(sv)) { toast("Deze save kon niet geladen worden."); return; }
+            saveEnabled = true;
+            const ix = readIndex();
+            ix.active = id;
+            writeIndex(ix);
+            closeSaveMenu();
+            toast(`Save "${activeSaveName}" geladen`);
+        }
+
+        /* ---- Save-menu ---- */
+        function fmtDate(ts) {
+            try { return new Date(ts).toLocaleString("nl-BE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
+            catch (err) { return ""; }
+        }
+        function openSaveMenu() {
+            if (activeSaveId) flushSave();
+            renderSaveMenu();
+            if (!$("ns-name").value.trim()) $("ns-name").value = `Save ${readIndex().order.length + 1}`;
+            $("sm-close").classList.toggle("hidden", !activeSaveId);
+            $("save-menu").classList.remove("hidden");
+            $("save-menu").classList.add("flex");
+        }
+        function closeSaveMenu() {
+            if (!activeSaveId) return;
+            $("save-menu").classList.add("hidden");
+            $("save-menu").classList.remove("flex");
+        }
+        function renderSaveMenu() {
+            const ix = readIndex();
+            const ids = ix.order.filter(id => ix.meta[id]).sort((a, b) => ix.meta[b].savedAt - ix.meta[a].savedAt);
+            const box = $("sm-list");
+            if (!ids.length) {
+                box.innerHTML = `<div class="text-xs text-slate-500 italic text-center py-3">Nog geen saves. Maak hieronder je eerste save.</div>`;
+                return;
+            }
+            const btn = "px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold";
+            box.innerHTML = ids.map((id, i) => {
+                const m = ix.meta[id];
+                const isActive = id === activeSaveId;
+                const mode = m.custom ? "Eigen teams" : (PRESET_NAMES[m.preset] || m.preset);
+                return `<div class="rounded-xl border ${i === 0 ? "border-amber-400/60 bg-amber-400/5" : "border-slate-700 bg-slate-950/60"} p-3">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="font-bold text-white truncate">${esc(m.name)}${isActive ? ' <span class="text-[10px] text-emerald-400 font-black uppercase ml-1">actief</span>' : ""}</div>
+                            <div class="text-[11px] text-slate-400">${esc(mode)} \u2022 vrije gebieden ${m.enableNeutral ? "aan" : "uit"} \u2022 landgrenzen ${m.enableClip ? "aan" : "uit"}</div>
+                            <div class="text-[11px] text-slate-500">Ronde ${m.round} \u2022 ${m.matches} wedstrijd${m.matches === 1 ? "" : "en"} met score \u2022 ${esc(fmtDate(m.savedAt))}</div>
+                        </div>
+                        <button data-act="open" data-id="${id}" class="shrink-0 px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs">${isActive ? "Verder" : "Openen"}</button>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                        <button data-act="backups" data-id="${id}" class="${btn}"><i class="fa-solid fa-clock-rotate-left mr-1"></i>Back-ups (${m.backups})</button>
+                        <button data-act="export" data-id="${id}" class="${btn}"><i class="fa-solid fa-download mr-1"></i>Exporteer</button>
+                        <button data-act="dup" data-id="${id}" class="${btn}"><i class="fa-regular fa-copy mr-1"></i>Dupliceer</button>
+                        <button data-act="rename" data-id="${id}" class="${btn}"><i class="fa-solid fa-pen mr-1"></i>Hernoem</button>
+                        <button data-act="delete" data-id="${id}" class="px-2 py-1 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-semibold"><i class="fa-solid fa-trash mr-1"></i>Verwijder</button>
+                    </div>
+                </div>`;
+            }).join("");
+        }
+
+        function exportSave(id) {
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv) { toast("Save niet gevonden."); return; }
+            const payload = { type: "eafc26-imperialism-save", v: 3, exportedAt: Date.now(), save: sv };
+            const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            const slug = String(sv.name || "save").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "save";
+            a.href = url;
+            a.download = `fc26_${slug}_ronde${(sv.st && sv.st.turn) || 1}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast("Back-upbestand gedownload \u2014 bewaar het ergens veilig");
+        }
+        function duplicateSave(id) {
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv) return;
+            sv.id = newSaveId();
+            sv.name = `${sv.name} (kopie)`;
+            sv.createdAt = Date.now();
+            sv.savedAt = Date.now();
+            sv.backups = [];
+            if (writeSave(sv)) { renderSaveMenu(); toast("Save gedupliceerd"); }
+        }
+        function renameSave(id) {
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv) return;
+            const name = prompt("Nieuwe naam voor deze save:", sv.name);
+            if (name === null || !name.trim()) return;
+            if (id === activeSaveId) {
+                activeSaveName = name.trim().slice(0, 40);
+                updateSaveLabel();
+                flushSave();
+            } else {
+                sv.name = name.trim().slice(0, 40);
+                writeSave(sv);
+            }
+            renderSaveMenu();
+        }
+        function deleteSave(id) {
+            const ix = readIndex();
+            const m = ix.meta[id];
+            if (!m) return;
+            const typed = prompt(`Save "${m.name}" DEFINITIEF verwijderen?\n\nDit kan niet ongedaan gemaakt worden (ronde ${m.round}, ${m.matches} wedstrijden). Tip: exporteer eerst een back-up.\n\nTyp de naam van de save om te bevestigen:`);
+            if (typed === null) return;
+            if (typed.trim().toLowerCase() !== String(m.name).trim().toLowerCase()) { toast("Naam klopt niet \u2014 er is niets verwijderd."); return; }
+            try { localStorage.removeItem(SAVE_PREFIX + id); } catch (err) { }
+            ix.order = ix.order.filter(x => x !== id);
+            delete ix.meta[id];
+            if (ix.active === id) ix.active = null;
+            writeIndex(ix);
+            if (id === activeSaveId) { location.reload(); return; }
+            renderSaveMenu();
+            toast("Save verwijderd");
+        }
+        function importSaveFile(file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const parsed = JSON.parse(reader.result);
+                    const sv = parsed && parsed.save ? parsed.save : parsed;
+                    if (!sv || !Array.isArray(sv.teams) || sv.teams.length < 3 || !sv.st) throw new Error("Dit is geen geldig back-upbestand.");
+                    sv.id = newSaveId();
+                    sv.name = `${sv.name || "Import"} (import)`.slice(0, 40);
+                    sv.savedAt = Date.now();
+                    sv.createdAt = sv.createdAt || Date.now();
+                    sv.backups = Array.isArray(sv.backups) ? sv.backups : [];
+                    sv.matches = Array.isArray(sv.matches) ? sv.matches : [];
+                    if (!writeSave(sv)) return;
+                    renderSaveMenu();
+                    toast(`Geïmporteerd als "${sv.name}"`);
+                } catch (err) {
+                    toast("Import mislukt: " + err.message, 6000);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function openBackupModal(id) {
+            if (activeSaveId) flushSave();
+            const sv = readSave(id);
+            if (!sv) return;
+            $("bm-title").textContent = `Back-ups \u2014 ${sv.name}`;
+            const bks = sv.backups || [];
+            const box = $("bm-list");
+            if (!bks.length) {
+                box.innerHTML = `<div class="text-slate-500 italic text-center py-4">Nog geen back-ups. Ze ontstaan automatisch vanaf je eerste wedstrijd.</div>`;
+            } else {
+                box.innerHTML = bks.map((b, i) => ({ b, i })).reverse().map(({ b, i }) => `
+                    <div class="flex items-center justify-between gap-2 bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5">
+                        <div class="min-w-0">
+                            <div class="font-semibold text-slate-200 truncate">${esc(b.label)}</div>
+                            <div class="text-[10px] text-slate-500">${esc(fmtDate(b.at))} \u2022 ronde ${b.turn}${b.kind === "safety" ? " \u2022 veiligheid" : ""}</div>
+                        </div>
+                        <button data-restore="${i}" data-id="${id}" class="shrink-0 px-2.5 py-1 rounded-md bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-[11px]">Herstel</button>
+                    </div>`).join("");
+            }
+            $("backup-modal").classList.remove("hidden");
+            $("backup-modal").classList.add("flex");
+        }
+        function closeBackupModal() {
+            $("backup-modal").classList.add("hidden");
+            $("backup-modal").classList.remove("flex");
         }
 
 
@@ -2650,6 +3128,9 @@
                 }
             }
 
+            const ub = $("btn-undo");
+            if (ub) ub.disabled = !BACKUPS.some(b => b.kind === "match");
+
             renderLeaderboard();
         }
 
@@ -2746,13 +3227,6 @@
             return filtered;
         }
 
-        function loadPreset(presetKey) {
-            lastPreset = presetKey;
-            customSource = false;
-            SOURCE_CLUBS = presetClubs(presetKey);
-            startGame(SOURCE_CLUBS);
-        }
-
         function startGame(rawClubs) {
             state.attacker = null;
             state.defender = null;
@@ -2820,17 +3294,6 @@
             $("theme-label").textContent = isDark ? "Dark" : "Light";
         };
 
-        $("preset-select").onchange = e => switchPreset(e.target.value);
-
-        $("chk-neutral").onchange = e => {
-            if (!confirmWipe("Neutrale regio's aan/uit zetten start een nieuwe game in deze mode.")) {
-                e.target.checked = state.enableNeutral;
-                return;
-            }
-            state.enableNeutral = e.target.checked;
-            startGame(SOURCE_CLUBS);
-        };
-
         $("chk-clip").onchange = e => {
             state.enableClip = e.target.checked;
             buildGeometry();
@@ -2854,9 +3317,55 @@
             render();
         };
 
-        $("btn-reset-game").onclick = () => {
-            if (!confirm(`Weet je het ZEKER?\n\nDe game van deze mode wordt gereset (andere modes blijven bewaard): de kaart, alle ${state.turn - 1} ronde(s), de historiek en alle ${state.players.length} verhuisde speler(s) worden gewist. Dit kan niet ongedaan gemaakt worden.`)) return;
-            startGame(SOURCE_CLUBS);
+        $("btn-reset-game").onclick = resetCurrentSave;
+
+        // Saves
+        $("btn-open-saves").onclick = openSaveMenu;
+        $("sm-close").onclick = closeSaveMenu;
+        $("btn-undo").onclick = undoLastMatch;
+        $("ns-create").onclick = () => {
+            const name = ($("ns-name").value || "").trim().slice(0, 40) || `Save ${readIndex().order.length + 1}`;
+            createSave({
+                name,
+                preset: $("preset-select").value,
+                enableNeutral: $("chk-neutral").checked,
+                enableClip: $("ns-clip").checked,
+                custom: null
+            }).then(ok => { if (ok) $("ns-name").value = ""; });
+        };
+        $("sm-list").onclick = e => {
+            const b = e.target.closest("[data-act]");
+            if (!b) return;
+            const id = b.dataset.id;
+            switch (b.dataset.act) {
+                case "open": openSaveById(id); break;
+                case "backups": openBackupModal(id); break;
+                case "export": exportSave(id); break;
+                case "dup": duplicateSave(id); break;
+                case "rename": renameSave(id); break;
+                case "delete": deleteSave(id); break;
+            }
+        };
+        $("sm-import").onchange = e => {
+            const f = e.target.files[0];
+            if (f) importSaveFile(f);
+            e.target.value = "";
+        };
+        $("bm-close").onclick = closeBackupModal;
+        $("bm-list").onclick = e => {
+            const b = e.target.closest("[data-restore]");
+            if (!b) return;
+            const id = b.dataset.id, idx = Number(b.dataset.restore);
+            const sv = readSave(id);
+            const bk = sv && sv.backups && sv.backups[idx];
+            if (!bk) return;
+            if (!confirm(`Terugzetten naar:\n\n${bk.label}\n(${fmtDate(bk.at)})\n\nJe huidige stand wordt eerst bewaard als back-up, dus je kunt altijd terug.`)) return;
+            if (restoreBackup(id, idx, false)) {
+                closeBackupModal();
+                renderSaveMenu();
+                if (id === activeSaveId) closeSaveMenu();
+                toast("Back-up teruggezet");
+            }
         };
 
         // Speler-transfer modal
@@ -2891,48 +3400,38 @@
             };
         });
 
-        // Replace teams via JSON file import
-        $("file-input").onchange = e => {
-            const f = e.target.files[0];
-            if (!f) return;
-            if (!confirmWipe("Een JSON importeren start een nieuwe game in deze mode.")) { e.target.value = ""; return; }
+        // Teams-JSON importeren: maakt een NIEUWE save (de huidige save blijft bewaard)
+        function importTeamsAsNewSave(file, merge) {
+            if (!confirm("Dit maakt een NIEUWE save met deze teams. Je huidige save blijft bewaard. Doorgaan?")) return;
             const reader = new FileReader();
-            reader.onload = () => {
+            reader.onload = async () => {
                 try {
                     const parsed = JSON.parse(reader.result);
                     const list = Array.isArray(parsed) ? parsed : parsed.teams;
                     if (!Array.isArray(list)) throw new Error("JSON moet een array van clubs zijn.");
-                    SOURCE_CLUBS = list;
-                    customSource = true;
-                    startGame(SOURCE_CLUBS);
+                    const base = file.name.replace(/\.json$/i, "");
+                    await createSave({
+                        name: (merge ? `Kaart + ${base}` : `Eigen teams (${base})`).slice(0, 40),
+                        preset: lastPreset,
+                        enableNeutral: state.enableNeutral,
+                        enableClip: state.enableClip,
+                        custom: merge ? [...SOURCE_CLUBS, ...list] : list
+                    });
                 } catch (err) {
                     $("status-message").textContent = "Import mislukt: " + err.message;
                 }
             };
-            reader.readAsText(f);
+            reader.readAsText(file);
+        }
+        $("file-input").onchange = e => {
+            const f = e.target.files[0];
+            if (f) importTeamsAsNewSave(f, false);
             e.target.value = "";
         };
-
-        // Merge JSON file into existing clubs
         $("btn-add-json-teams").onclick = () => $("file-merge-input").click();
         $("file-merge-input").onchange = e => {
             const f = e.target.files[0];
-            if (!f) return;
-            if (!confirmWipe("JSON samenvoegen start een nieuwe game in deze mode.")) { e.target.value = ""; return; }
-            const reader = new FileReader();
-            reader.onload = () => {
-                try {
-                    const parsed = JSON.parse(reader.result);
-                    const list = Array.isArray(parsed) ? parsed : parsed.teams;
-                    if (!Array.isArray(list)) throw new Error("JSON moet een array van clubs zijn.");
-                    SOURCE_CLUBS = [...SOURCE_CLUBS, ...list];
-                    customSource = true;
-                    startGame(SOURCE_CLUBS);
-                } catch (err) {
-                    $("status-message").textContent = "Samenvoegen mislukt: " + err.message;
-                }
-            };
-            reader.readAsText(f);
+            if (f) importTeamsAsNewSave(f, true);
             e.target.value = "";
         };
 
@@ -2961,29 +3460,15 @@
             await loadClubsFromJson();
             updatePresetLabels();
             buildCompassFace();
-            // Opgeslagen game herstellen (Ctrl+F5 houdt je voortgang), anders nieuwe game starten
-            if (!tryRestore()) loadPreset("all");
+            try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (err) { }
+            migrateOldSaves();
             saveEnabled = true;
-            saveGame();
-
-            // Fetch real world/country borders GeoJSON in the background for coastline/border clipping
-            try {
-                const res = await fetch(
-                    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
-                );
-                if (res.ok) {
-                    landmassGeoJSON = await res.json();
-                    // Re-run with clipped country shapes (maar nooit een lopende game wissen)
-                    if (hasProgress()) {
-                        buildGeometry();
-                        render();
-                    } else {
-                        startGame(SOURCE_CLUBS);
-                    }
-                }
-            } catch (err) {
-                console.warn("Kon wereldgrenzen niet ophalen, gebruikt standaard Voronoi-grenzen.", err);
-            }
+            // Landgrenzen op de achtergrond ophalen en meteen toepassen op een geopende save
+            ensureLandmass().then(ok => {
+                if (ok && activeSaveId && TEAMS.length) { buildGeometry(); render(); }
+            });
+            // Startscherm: kies een bestaande save of maak een nieuwe
+            openSaveMenu();
         })();
     </script>
 </body>
