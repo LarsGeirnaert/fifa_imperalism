@@ -34,6 +34,21 @@
             user-select: none;
         }
 
+        input,
+        textarea {
+            user-select: text;
+        }
+
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
         body,
         html {
             margin: 0;
@@ -426,19 +441,10 @@
                     </div>
 
                     <!-- Quick Inline Outcome Buttons (Always shows exact club names!) -->
-                    <div id="inline-battle-actions" class="hidden pt-1 flex flex-col gap-1.5">
-                        <div class="text-[10px] uppercase tracking-wider text-center text-slate-400 font-bold">Wie heeft
-                            gewonnen?</div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button id="btn-inline-attwin"
-                                class="py-2 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow transition truncate">
-                                Attacker Won
-                            </button>
-                            <button id="btn-inline-defwin"
-                                class="py-2 px-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs shadow transition truncate">
-                                Defender Won
-                            </button>
-                        </div>
+                    <div id="inline-battle-actions" class="hidden pt-1">
+                        <div class="text-[10px] uppercase tracking-wider text-center text-slate-400 font-bold mb-1.5">
+                            Wat was de score?</div>
+                        <div id="inline-score-box"></div>
                     </div>
 
                     <!-- Quick Inline Free Upgrade Button (When Defender is Neutral Zone) -->
@@ -462,6 +468,10 @@
                     class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
                     <i class="fa-solid fa-clock-rotate-left mr-1"></i>Historiek
                 </button>
+                <button data-tab="tab-stats"
+                    class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
+                    <i class="fa-solid fa-chart-simple mr-1"></i>Stats
+                </button>
                 <button data-tab="tab-players"
                     class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
                     <i class="fa-solid fa-user-group mr-1"></i>Spelers
@@ -481,6 +491,9 @@
             <div id="tab-log" class="tab-pane hidden flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
                 <div class="text-slate-500 italic text-center py-6">Nog geen wedstrijden gespeeld.</div>
             </div>
+
+            <!-- TAB: STATISTIEKEN (op basis van ingevulde scores) -->
+            <div id="tab-stats" class="tab-pane hidden flex-1 overflow-y-auto space-y-3 pr-1 text-xs"></div>
 
             <!-- TAB: SPELERS (transfers na gewonnen wedstrijden) -->
             <div id="tab-players" class="tab-pane hidden flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
@@ -599,7 +612,7 @@
 
             <h2 id="modal-title" class="font-broadcast text-3xl font-extrabold text-white tracking-wide">BATTLE!</h2>
             <p id="modal-subtitle" class="text-sm text-slate-300 mt-1 mb-5">Speel of simuleer de wedstrijd in EA FC 26
-                en kies de winnaar:</p>
+                en vul de score in:</p>
 
             <!-- VS Showcase -->
             <div id="modal-vs-box"
@@ -627,19 +640,8 @@
             </div>
 
             <!-- Dynamic Club Name Buttons (For Real Club Battle) -->
-            <div id="modal-club-buttons" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button id="btn-modal-attwin"
-                    class="py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm shadow-lg shadow-amber-400/25 transition flex flex-col items-center justify-center">
-                    <span class="text-[10px] uppercase tracking-wider opacity-80">Aanvaller Wint</span>
-                    <span id="btn-modal-attwin-label" class="text-base font-black truncate max-w-full">Sunderland
-                        Won</span>
-                </button>
-                <button id="btn-modal-defwin"
-                    class="py-3.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-sm shadow-lg shadow-orange-600/25 transition flex flex-col items-center justify-center">
-                    <span class="text-[10px] uppercase tracking-wider opacity-85">Verdediger Wint</span>
-                    <span id="btn-modal-defwin-label" class="text-base font-black truncate max-w-full">Leeds United
-                        Won</span>
-                </button>
+            <div id="modal-club-buttons">
+                <div id="modal-score-box"></div>
             </div>
 
             <!-- Free Upgrade Button (For Neutral Zone) -->
@@ -1371,6 +1373,7 @@
             over: false,
             isSpinning: false,
             players: [],
+            matches: [],
             enableNeutral: true,
             enableClip: true
         };
@@ -1724,6 +1727,7 @@
            ============================================================================ */
         function render() {
             renderPlayers();
+            renderStats();
             saveGame();
             shapeLayer.clearLayers();
             vectorLayer.clearLayers();
@@ -2039,7 +2043,7 @@
             render();
         }
 
-        function resolveBattle(attackerWon) {
+        function resolveBattle(attackerWon, score) {
             if (!state.attacker || !state.defender) return;
             const att = byId(state.attacker);
             const def = byId(state.defender);
@@ -2060,14 +2064,188 @@
             // Case 2: Real Club vs Real Club Battle -> eerst de speler-transfer noteren
             const winner = attackerWon ? att : def;
             const loser = attackerWon ? def : att;
-            openTransferModal(winner, loser, attackerWon);
+            openTransferModal(winner, loser, attackerWon, score || null);
+        }
+
+
+        /* ============================================================================
+           SCORE INVOEREN + STATISTIEKEN
+           ============================================================================ */
+        let lastScoreKey = null;
+
+        function scoreBoxHTML(p) {
+            const inp = "w-14 text-center rounded-lg bg-slate-950 border border-slate-600 py-2 font-broadcast text-2xl font-extrabold text-white focus:outline-none focus:border-amber-400";
+            return `
+                <div class="flex items-center justify-center gap-2">
+                    <div id="${p}-att-name" class="flex-1 min-w-0 text-right text-xs font-bold text-amber-300 truncate">-</div>
+                    <input id="${p}-att-goals" type="number" inputmode="numeric" min="0" max="99" placeholder="0" class="${inp}">
+                    <span class="font-broadcast text-xl font-black text-slate-500">-</span>
+                    <input id="${p}-def-goals" type="number" inputmode="numeric" min="0" max="99" placeholder="0" class="${inp}">
+                    <div id="${p}-def-name" class="flex-1 min-w-0 text-left text-xs font-bold text-orange-300 truncate">-</div>
+                </div>
+                <div id="${p}-pen" class="hidden mt-2">
+                    <div class="text-[10px] uppercase tracking-wider text-center text-slate-400 font-bold mb-1">Gelijkspel \u2014 wie won na strafschoppen?</div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="${p}-pen-att" class="py-2 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs truncate">-</button>
+                        <button id="${p}-pen-def" class="py-2 px-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs truncate">-</button>
+                    </div>
+                </div>
+                <div id="${p}-err" class="hidden mt-1.5 text-[11px] text-red-400 text-center font-semibold"></div>
+                <button id="${p}-confirm" class="mt-2 w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-check"></i>Bevestig score
+                </button>`;
+        }
+
+        function parseGoals(v) {
+            const t = String(v).trim();
+            return /^\d{1,2}$/.test(t) ? Number(t) : null;
+        }
+
+        function setScoreNames(p, attName, defName) {
+            $(p + "-att-name").textContent = attName;
+            $(p + "-def-name").textContent = defName;
+            $(p + "-pen-att").textContent = attName;
+            $(p + "-pen-def").textContent = defName;
+        }
+
+        function hideScorePen(p) {
+            $(p + "-pen").classList.add("hidden");
+            $(p + "-err").classList.add("hidden");
+        }
+
+        function resetScoreBoxes() {
+            for (const p of ["in", "md"]) {
+                $(p + "-att-goals").value = "";
+                $(p + "-def-goals").value = "";
+                hideScorePen(p);
+            }
+        }
+
+        function submitScore(p, pen) {
+            if (!state.attacker || !state.defender) return;
+            const a = parseGoals($(p + "-att-goals").value);
+            const d = parseGoals($(p + "-def-goals").value);
+            const err = $(p + "-err");
+            if (a === null || d === null) {
+                err.textContent = "Vul bij beide clubs de doelpunten in (0 t/m 99).";
+                err.classList.remove("hidden");
+                return;
+            }
+            if (a === d && !pen) {
+                err.classList.add("hidden");
+                $(p + "-pen").classList.remove("hidden");
+                return;
+            }
+            const attackerWon = a > d || (a === d && pen === "att");
+            const score = { att: a, def: d, pens: a === d ? pen : null };
+            hideScorePen(p);
+            resolveBattle(attackerWon, score);
+        }
+
+        function wireScoreBox(p) {
+            const box = p === "in" ? $("inline-score-box") : $("modal-score-box");
+            box.innerHTML = scoreBoxHTML(p);
+            $(p + "-confirm").onclick = () => submitScore(p);
+            $(p + "-pen-att").onclick = () => submitScore(p, "att");
+            $(p + "-pen-def").onclick = () => submitScore(p, "def");
+            for (const id of [p + "-att-goals", p + "-def-goals"]) {
+                $(id).oninput = () => hideScorePen(p);
+                $(id).onkeydown = e => { if (e.key === "Enter") $(p + "-confirm").click(); };
+            }
+        }
+
+        function scoreText(m) {
+            const sc = m.score || m;
+            const a = sc.att !== undefined ? sc.att : sc.a;
+            const d = sc.def !== undefined ? sc.def : sc.d;
+            const attName = (byId(m.attId) || {}).name || m.attName || "?";
+            const defName = (byId(m.defId) || {}).name || m.defName || "?";
+            let t = `${attName} ${a}-${d} ${defName}`;
+            if (sc.pens) t += ` (str. ${sc.pens === "att" ? attName : defName})`;
+            return t;
+        }
+
+        function renderStats() {
+            const box = $("tab-stats");
+            if (!box) return;
+            const ms = state.matches || [];
+            if (!ms.length) {
+                box.innerHTML = `<div class="text-slate-500 italic text-center py-6">Nog geen scores ingevuld. Na elke wedstrijd vul je de score in en verschijnen hier de statistieken.</div>`;
+                return;
+            }
+            const goals = ms.reduce((n, m) => n + m.a + m.d, 0);
+            const attWins = ms.filter(m => m.winnerId === m.attId).length;
+            const pens = ms.filter(m => m.pens).length;
+            const clubs = new Map();
+            const get = (id, name) => {
+                if (!clubs.has(id)) clubs.set(id, { name, g: 0, w: 0, v: 0, gv: 0, gt: 0 });
+                return clubs.get(id);
+            };
+            for (const m of ms) {
+                const A = get(m.attId, m.attName), D = get(m.defId, m.defName);
+                A.g++; D.g++;
+                A.gv += m.a; A.gt += m.d;
+                D.gv += m.d; D.gt += m.a;
+                if (m.winnerId === m.attId) { A.w++; D.v++; } else { D.w++; A.v++; }
+            }
+            const rows = [...clubs.values()].sort((x, y) => y.w - x.w || (y.gv - y.gt) - (x.gv - x.gt) || y.gv - x.gv);
+            const card = (label, val) => `<div class="bg-slate-950/70 border border-slate-800 rounded-lg py-1.5 px-1 text-center"><div class="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">${label}</div><div class="font-broadcast text-lg font-bold text-sky-400">${val}</div></div>`;
+            const margin = m => Math.abs(m.a - m.d);
+            const topWins = [...ms].sort((x, y) => margin(y) - margin(x) || (y.a + y.d) - (x.a + x.d)).slice(0, 3);
+            const topGoals = [...ms].sort((x, y) => (y.a + y.d) - (x.a + x.d)).slice(0, 3);
+            const line = m => `<div class="flex justify-between gap-2 py-0.5"><span class="truncate">${esc(scoreText(m))}</span><span class="text-slate-500 whitespace-nowrap">R${m.round}</span></div>`;
+
+            let html = `<div class="grid grid-cols-4 gap-1.5">
+                ${card("Wedstr.", ms.length)}${card("Goals", goals)}${card("Gem.", (goals / ms.length).toFixed(1))}${card("Att wint", Math.round(attWins / ms.length * 100) + "%")}
+            </div>`;
+            if (pens) html += `<div class="text-[10px] text-slate-500 text-center">${pens} wedstrijd${pens > 1 ? "en" : ""} beslist op strafschoppen (telt als winst)</div>`;
+
+            html += `<div class="bg-slate-950/60 border border-slate-800 rounded-lg overflow-hidden">
+                <div class="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-x-2 px-2 py-1 text-[9px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-800">
+                    <span>Club</span><span class="text-right">G</span><span class="text-right">W</span><span class="text-right">V</span><span class="text-right">+/-</span><span class="text-right">DS</span>
+                </div>`;
+            for (const r of rows) {
+                const gd = r.gv - r.gt;
+                html += `<div class="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-x-2 px-2 py-1 border-b border-slate-800/60 last:border-0 text-slate-200">
+                    <span class="truncate font-semibold">${esc(r.name)}</span>
+                    <span class="text-right text-slate-400">${r.g}</span>
+                    <span class="text-right text-emerald-400 font-bold">${r.w}</span>
+                    <span class="text-right text-red-400">${r.v}</span>
+                    <span class="text-right text-slate-300">${r.gv}-${r.gt}</span>
+                    <span class="text-right ${gd >= 0 ? "text-emerald-300" : "text-red-300"}">${gd > 0 ? "+" : ""}${gd}</span>
+                </div>`;
+            }
+            html += `</div>
+                <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-2"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Grootste overwinningen</div>${topWins.map(line).join("")}</div>
+                <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-2"><div class="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Meeste doelpunten</div>${topGoals.map(line).join("")}</div>
+                <button id="btn-export-matches" class="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5"><i class="fa-solid fa-file-csv"></i>Exporteer wedstrijden (CSV)</button>`;
+            box.innerHTML = html;
+            $("btn-export-matches").onclick = exportMatchesCSV;
+        }
+
+        function exportMatchesCSV() {
+            const q = v => `"${String(v).replace(/"/g, '""')}"`;
+            const lines = ["ronde,aanvaller,doelpunten_aanvaller,doelpunten_verdediger,verdediger,strafschoppen_winnaar,winnaar"];
+            for (const m of state.matches) {
+                const w = m.winnerId === m.attId ? m.attName : m.defName;
+                const pw = m.pens ? (m.pens === "att" ? m.attName : m.defName) : "";
+                lines.push([m.round, q(m.attName), m.a, m.d, q(m.defName), q(pw), q(w)].join(","));
+            }
+            const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "fc26_imperialism_wedstrijden.csv";
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         /* ---- Speler-transfers ---- */
-        function openTransferModal(winner, loser, attackerWon) {
-            pendingTransfer = { winnerId: winner.id, loserId: loser.id, attackerWon };
+        function openTransferModal(winner, loser, attackerWon, score) {
+            pendingTransfer = { winnerId: winner.id, loserId: loser.id, attackerWon, score, attId: state.attacker, defId: state.defender };
+            const scTxt = score ? ` (${scoreText(pendingTransfer)})` : "";
             $("tr-title").textContent = `${winner.name} wint van ${loser.name}`;
-            $("tr-sub").textContent = `${winner.name} neemt een speler mee van ${loser.name}. Noteer hem nu, dan vergeet je het niet.`;
+            $("tr-sub").textContent = `${scTxt ? scTxt.trim() + " " : ""}${winner.name} neemt een speler mee van ${loser.name}. Noteer hem nu, dan vergeet je het niet.`;
             $("tr-label").textContent = `Speler van ${loser.name}`;
             $("tr-list").innerHTML = state.players
                 .filter(p => p.currentId === loser.id)
@@ -2118,6 +2296,18 @@
             closeTransferModal();
 
             winner.wins = (winner.wins || 0) + 1;
+            let scoreHtml = "";
+            if (pt.score) {
+                const attC = byId(pt.attId), defC = byId(pt.defId);
+                state.matches.push({
+                    round: state.turn,
+                    attId: pt.attId, attName: attC ? attC.name : "?",
+                    defId: pt.defId, defName: defC ? defC.name : "?",
+                    a: pt.score.att, d: pt.score.def, pens: pt.score.pens || null,
+                    winnerId: winner.id, loserId: loser.id
+                });
+                scoreHtml = ` <span class="text-white font-black">${esc(scoreText(pt))}</span>`;
+            }
             const actionVerb = pt.attackerWon ? "veroverde" : "hield stand en annexeerde";
             const winColor = pt.attackerWon ? "text-amber-300" : "text-orange-400";
 
@@ -2130,7 +2320,7 @@
             }
 
             addLog(
-                `Ronde ${state.turn}: <b class="${winColor}">${esc(winner.name)}</b> ${actionVerb} <b>${esc(loser.name)}</b>!${extra}`
+                `Ronde ${state.turn}: <b class="${winColor}">${esc(winner.name)}</b> ${actionVerb} <b>${esc(loser.name)}</b>!${scoreHtml}${extra}`
             );
 
             annexTerritory(winner.id, loser.id);
@@ -2209,6 +2399,7 @@
                 st: { attacker: state.attacker, defender: state.defender, turn: state.turn, over: state.over },
                 teams: TEAMS,
                 players: state.players,
+                matches: state.matches,
                 log: LOG
             };
         }
@@ -2286,6 +2477,7 @@
             state.turn = sv.st.turn || 1;
             state.over = !!sv.st.over;
             state.players = Array.isArray(sv.players) ? sv.players : [];
+            state.matches = Array.isArray(sv.matches) ? sv.matches : [];
             LOG = Array.isArray(sv.log) ? sv.log : [];
             pendingTransfer = null;
             $("transfer-modal").classList.add("hidden");
@@ -2376,9 +2568,11 @@
                 $("modal-club-buttons").classList.remove("hidden");
                 $("modal-neutral-buttons").classList.add("hidden");
 
-                // Dynamic Club Names on Battle Modal Buttons!
-                $("btn-modal-attwin-label").textContent = `${att.name} Won`;
-                $("btn-modal-defwin-label").textContent = `${def.name} Won`;
+                // Namen + reeds ingevulde score uit het kleine paneel overnemen
+                setScoreNames("md", att.name, def.name);
+                $("md-att-goals").value = $("in-att-goals").value;
+                $("md-def-goals").value = $("in-def-goals").value;
+                hideScorePen("md");
             }
 
             $("battle-modal").classList.remove("hidden");
@@ -2448,9 +2642,9 @@
                         $("inline-upgrade-actions").classList.add("hidden");
                         $("inline-battle-actions").classList.remove("hidden");
 
-                        // Dynamic Club Names on Inline Buttons too!
-                        $("btn-inline-attwin").textContent = `${att.name} Won`;
-                        $("btn-inline-defwin").textContent = `${def.name} Won`;
+                        const scoreKey = att.id + "|" + def.id;
+                        if (scoreKey !== lastScoreKey) { lastScoreKey = scoreKey; resetScoreBoxes(); }
+                        setScoreNames("in", att.name, def.name);
                         $("btn-resolve-text").textContent = "3. Open Battle Scherm";
                     }
                 }
@@ -2565,6 +2759,7 @@
             state.turn = 1;
             state.over = false;
             state.players = [];
+            state.matches = [];
             LOG = [];
             pendingTransfer = null;
             $("transfer-modal").classList.add("hidden");
@@ -2598,12 +2793,10 @@
         $("btn-roll-def").onclick = rollDefender;
         $("btn-resolve").onclick = openModal;
 
-        $("btn-inline-attwin").onclick = () => resolveBattle(true);
-        $("btn-inline-defwin").onclick = () => resolveBattle(false);
+        wireScoreBox("in");
+        wireScoreBox("md");
         $("btn-inline-upgrade").onclick = () => resolveBattle(true);
 
-        $("btn-modal-attwin").onclick = () => resolveBattle(true);
-        $("btn-modal-defwin").onclick = () => resolveBattle(false);
         $("btn-modal-claim-neutral").onclick = () => resolveBattle(true);
         $("btn-modal-close").onclick = closeModal;
 
