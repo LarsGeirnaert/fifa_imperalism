@@ -1,0 +1,2798 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EA FC 26 Football Imperialism — World & Europe Conquest</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Rajdhani for Sports Broadcast Look -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Rajdhani:wght@600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Leaflet Map CSS & JS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <!-- Turf.js v6.5.0 for Voronoi, Landmass Clipping & Polygon Union -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+
+    <style>
+        :root {
+            --gold: #ffd400;
+            --hot: #ff4d1a;
+            --neutral: #64748b;
+            --upgrade: #10b981;
+            --bg-dark: #090d16;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: #f1f5f9;
+            overflow: hidden;
+        }
+
+        .font-broadcast {
+            font-family: 'Rajdhani', sans-serif;
+            letter-spacing: 0.03em;
+        }
+
+        /* Map Container */
+        #map {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: #070b12;
+        }
+
+        /* 100% Free Dark Mode Filter on standard OpenStreetMap tiles (No API Key Required!) */
+        .dark-tiles .leaflet-tile-pane {
+            filter: brightness(0.62) invert(1) contrast(2.8) hue-rotate(205deg) saturate(0.32) brightness(0.72);
+            transition: filter 0.3s ease;
+        }
+
+        /* High-Visibility SVG Glow & Pulsing Borders for Attacker & Defender */
+        path.territory-poly {
+            transition: fill-opacity 0.25s ease, stroke-width 0.25s ease;
+        }
+
+        path.attacker-glow {
+            filter: drop-shadow(0 0 14px rgba(255, 212, 0, 0.95)) drop-shadow(0 0 28px rgba(255, 212, 0, 0.65));
+            animation: pulse-attacker-stroke 1.3s infinite alternate ease-in-out;
+        }
+
+        path.defender-glow {
+            filter: drop-shadow(0 0 14px rgba(255, 77, 26, 0.95)) drop-shadow(0 0 28px rgba(255, 77, 26, 0.65));
+            animation: pulse-defender-stroke 1.3s infinite alternate ease-in-out;
+        }
+
+        path.defender-neutral-glow {
+            filter: drop-shadow(0 0 14px rgba(16, 185, 129, 0.95)) drop-shadow(0 0 28px rgba(16, 185, 129, 0.65));
+            animation: pulse-neutral-stroke 1.3s infinite alternate ease-in-out;
+        }
+
+        @keyframes pulse-attacker-stroke {
+            0% {
+                stroke-width: 3px;
+                fill-opacity: 0.78;
+            }
+
+            100% {
+                stroke-width: 6px;
+                fill-opacity: 0.92;
+            }
+        }
+
+        @keyframes pulse-defender-stroke {
+            0% {
+                stroke-width: 3px;
+                fill-opacity: 0.78;
+            }
+
+            100% {
+                stroke-width: 6px;
+                fill-opacity: 0.92;
+            }
+        }
+
+        @keyframes pulse-neutral-stroke {
+            0% {
+                stroke-width: 3px;
+                fill-opacity: 0.75;
+            }
+
+            100% {
+                stroke-width: 6px;
+                fill-opacity: 0.90;
+            }
+        }
+
+        /* Animated Attack Line between Attacker and Defender */
+        path.attack-vector-line {
+            stroke-dasharray: 12, 10;
+            animation: dash-move 0.7s linear infinite;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.9));
+        }
+
+        @keyframes dash-move {
+            to {
+                stroke-dashoffset: -22;
+            }
+        }
+
+        /* Club Pin Markers */
+        .club-pin {
+            background: none;
+            border: 0;
+        }
+
+        .club-pin .dot {
+            position: absolute;
+            width: 11px;
+            height: 11px;
+            margin: -5.5px 0 0 -5.5px;
+            border-radius: 50%;
+            background: var(--c);
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .club-pin .name {
+            position: absolute;
+            left: 9px;
+            top: -9px;
+            white-space: nowrap;
+            font-size: 11px;
+            font-weight: 800;
+            color: #ffffff;
+            background: rgba(9, 13, 22, 0.78);
+            padding: 1px 5px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            text-shadow: 0 1px 2px #000;
+            pointer-events: none;
+        }
+
+        .low-zoom .club-pin .name {
+            display: none;
+        }
+
+        /* Highlighted Radar Beacon for Selected Attacker / Defender */
+        .beacon-pin {
+            background: none;
+            border: 0;
+            pointer-events: none;
+        }
+
+        .beacon-ring {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            margin: -22px 0 0 -22px;
+            border-radius: 50%;
+            border: 3px solid var(--beacon-color, #ffd400);
+            animation: radar-ping 1.25s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        .beacon-badge {
+            position: absolute;
+            transform: translate(-50%, -145%);
+            white-space: nowrap;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.75);
+            border: 2px solid #fff;
+        }
+
+        @keyframes radar-ping {
+            0% {
+                transform: scale(0.35);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(2.1);
+                opacity: 0;
+            }
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.35);
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.6);
+        }
+
+        /* Custom Leaflet Tooltip */
+        .leaflet-tooltip.imperial-tooltip {
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #f8fafc;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
+        }
+
+        .leaflet-tooltip-top.imperial-tooltip::before,
+        .leaflet-tooltip-bottom.imperial-tooltip::before,
+        .leaflet-tooltip-left.imperial-tooltip::before,
+        .leaflet-tooltip-right.imperial-tooltip::before {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="dark-tiles">
+
+    <!-- MAP CANVAS -->
+    <div id="map"></div>
+
+    <!-- TOP-LEFT HUD: BRANDING, STATS & QUICK FILTERS -->
+    <div class="fixed top-3 left-3 z-[1000] flex flex-col gap-2 max-w-[360px] pointer-events-auto">
+        <div class="bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-3.5 shadow-2xl">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5">
+                    <div
+                        class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-slate-950 font-black text-lg shadow-md">
+                        <i class="fa-solid fa-crown"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-broadcast text-xl font-extrabold leading-none tracking-wide text-white">EA FC 26
+                            IMPERIALISM</h1>
+                        <p id="hud-subtitle" class="text-[11px] text-slate-400 font-medium mt-0.5">Voronoi + Landmass
+                            Edition</p>
+                    </div>
+                </div>
+                <button id="btn-toggle-theme" title="Wissel tussen Donkere of Standaard Kaart"
+                    class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-600/60 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-moon text-amber-400"></i>
+                    <span id="theme-label">Dark</span>
+                </button>
+            </div>
+
+            <!-- Live Counters -->
+            <div class="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-slate-800 text-center">
+                <div class="bg-slate-950/60 rounded-lg py-1.5 px-2 border border-slate-800/80">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Clubs Over</div>
+                    <div id="stat-clubs" class="font-broadcast text-lg font-bold text-amber-400">0 / 0</div>
+                </div>
+                <div class="bg-slate-950/60 rounded-lg py-1.5 px-2 border border-slate-800/80">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Neutraal</div>
+                    <div id="stat-neutral" class="font-broadcast text-lg font-bold text-emerald-400">0</div>
+                </div>
+                <div class="bg-slate-950/60 rounded-lg py-1.5 px-2 border border-slate-800/80">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Ronde</div>
+                    <div id="stat-turn" class="font-broadcast text-lg font-bold text-sky-400">#1</div>
+                </div>
+            </div>
+
+            <!-- Preset & Settings Row -->
+            <div class="mt-3 flex flex-col gap-2">
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-slate-300 font-semibold whitespace-nowrap"><i
+                            class="fa-solid fa-earth-europe mr-1 text-sky-400"></i>Map Preset:</label>
+                    <select id="preset-select"
+                        class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-amber-400">
+                        <option value="all">🌍 Alle EA FC 26 Teams (115+ Clubs)</option>
+                        <option value="belgium">🇧🇪 België — Jupiler Pro League (16 Clubs)</option>
+                        <option value="benelux">🦁 BeNeLux Battle (België + Nederland)</option>
+                        <option value="europe">🏆 Europa Top Competities (~95 Clubs)</option>
+                        <option value="uk">🏴󠁧󠁢󠁥󠁮󠁧󠁿 UK & Premier League (24 Clubs)</option>
+                    </select>
+                </div>
+
+                <div
+                    class="flex items-center justify-between gap-2 text-xs bg-slate-950/50 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                    <label for="chk-neutral" class="flex items-center gap-2 cursor-pointer text-slate-300 font-medium">
+                        <input type="checkbox" id="chk-neutral" checked class="rounded accent-emerald-500 w-3.5 h-3.5">
+                        <span>Vrije gebieden (upgrade per land)</span>
+                    </label>
+                    <label for="chk-clip" class="flex items-center gap-2 cursor-pointer text-slate-300 font-medium"
+                        title="Knip gebieden uit volgens echte landsgrenzen">
+                        <input type="checkbox" id="chk-clip" checked class="rounded accent-amber-400 w-3.5 h-3.5">
+                        <span>Landgrenzen</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- SELECTED TERRITORY INSPECTOR (Shows when clicking a territory on the map) -->
+        <div id="inspector-card"
+            class="hidden bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl p-3 shadow-2xl transition-all">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span id="insp-dot" class="w-3.5 h-3.5 rounded-full inline-block border border-white"></span>
+                    <h3 id="insp-name" class="font-bold text-sm text-white">Club Name</h3>
+                </div>
+                <button id="btn-close-insp" class="text-slate-400 hover:text-white text-xs px-1"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="insp-details" class="text-xs text-slate-300 mt-1.5 space-y-0.5"></div>
+            <div class="flex gap-1.5 mt-2.5">
+                <button id="btn-force-att"
+                    class="flex-1 py-1 px-2 rounded bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/50 text-amber-300 text-[11px] font-bold transition">
+                    Zet als Attacker
+                </button>
+                <button id="btn-force-def"
+                    class="flex-1 py-1 px-2 rounded bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/50 text-orange-300 text-[11px] font-bold transition">
+                    Zet als Defender
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT CONTROL PANEL: SPINNERS, BATTLE CONTROLS, LEADERBOARD & LOG -->
+    <aside
+        class="fixed top-3 right-3 bottom-3 z-[1000] w-[350px] max-w-[92vw] flex flex-col gap-2.5 pointer-events-auto">
+        <div
+            class="bg-slate-900/92 backdrop-blur-md border border-slate-700/80 rounded-xl p-4 shadow-2xl flex flex-col gap-3 flex-1 overflow-hidden">
+
+            <!-- ACTION STEPS -->
+            <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Wedstrijd
+                        Generator</span>
+                    <button id="btn-fit-all"
+                        class="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1">
+                        <i class="fa-solid fa-expand"></i> Overzicht
+                    </button>
+                </div>
+
+                <!-- Step 1: Roll Attacker -->
+                <button id="btn-roll-att"
+                    class="w-full py-2.5 px-4 rounded-xl font-broadcast text-base font-extrabold uppercase tracking-wider bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 shadow-lg shadow-amber-500/20 transition flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed">
+                    <span><i class="fa-solid fa-dice mr-2"></i>1. Roll Attacker</span>
+                    <span class="text-xs font-sans font-bold bg-slate-950/20 px-2 py-0.5 rounded">Random Club</span>
+                </button>
+
+                <!-- Step 2: Roll Defender -->
+                <button id="btn-roll-def" disabled
+                    class="w-full py-2.5 px-4 rounded-xl font-broadcast text-base font-extrabold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white shadow-lg shadow-orange-600/20 transition flex items-center justify-between disabled:opacity-35 disabled:cursor-not-allowed">
+                    <span><i class="fa-solid fa-compass mr-2"></i>2. Roll Defender</span>
+                    <span class="text-xs font-sans font-bold bg-black/25 px-2 py-0.5 rounded">Buurland</span>
+                </button>
+
+                <!-- Step 3: Resolve Battle / Claim Upgrade -->
+                <button id="btn-resolve" disabled
+                    class="w-full py-2.5 px-4 rounded-xl font-broadcast text-base font-extrabold uppercase tracking-wider bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2 disabled:opacity-35 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-futbol"></i>
+                    <span id="btn-resolve-text">3. Start Battle / Claim</span>
+                </button>
+            </div>
+
+            <!-- CURRENT MATCHUP READOUT BOX -->
+            <div id="matchup-box" class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-xs space-y-2">
+                <div id="status-message" class="text-slate-300 font-medium text-center py-1">
+                    Klik op <b class="text-amber-400">1. Roll Attacker</b> om een beurt te starten.
+                </div>
+
+                <!-- Attacker & Defender Cards (visible when rolled) -->
+                <div id="vs-cards" class="hidden space-y-2">
+                    <!-- Attacker Card -->
+                    <div
+                        class="flex items-center justify-between bg-amber-500/10 border border-amber-400/50 rounded-lg p-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span
+                                class="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black text-[10px] uppercase">ATT</span>
+                            <span id="card-att-name" class="font-bold text-amber-300 text-sm truncate">-</span>
+                        </div>
+                        <span id="card-att-stats"
+                            class="text-[11px] text-amber-200/80 font-semibold whitespace-nowrap ml-2">1 regio</span>
+                    </div>
+
+                    <!-- Defender Card -->
+                    <div id="card-def-wrap"
+                        class="flex items-center justify-between bg-orange-500/10 border border-orange-500/50 rounded-lg p-2 opacity-50">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span id="card-def-badge"
+                                class="px-1.5 py-0.5 rounded bg-orange-500 text-white font-black text-[10px] uppercase">DEF</span>
+                            <span id="card-def-name" class="font-bold text-orange-300 text-sm truncate">Wacht op
+                                roll...</span>
+                        </div>
+                        <span id="card-def-stats"
+                            class="text-[11px] text-orange-200/80 font-semibold whitespace-nowrap ml-2">-</span>
+                    </div>
+
+                    <!-- Quick Inline Outcome Buttons (Always shows exact club names!) -->
+                    <div id="inline-battle-actions" class="hidden pt-1 flex flex-col gap-1.5">
+                        <div class="text-[10px] uppercase tracking-wider text-center text-slate-400 font-bold">Wie heeft
+                            gewonnen?</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btn-inline-attwin"
+                                class="py-2 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shadow transition truncate">
+                                Attacker Won
+                            </button>
+                            <button id="btn-inline-defwin"
+                                class="py-2 px-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs shadow transition truncate">
+                                Defender Won
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Inline Free Upgrade Button (When Defender is Neutral Zone) -->
+                    <div id="inline-upgrade-actions" class="hidden pt-1">
+                        <button id="btn-inline-upgrade"
+                            class="w-full py-2.5 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-500/25 transition flex items-center justify-center gap-1.5">
+                            <i class="fa-solid fa-circle-up"></i>
+                            <span id="btn-inline-upgrade-text">Claim Regio + Free Upgrade!</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABS: LEADERBOARD vs BATTLE LOG vs DATA IMPORT -->
+            <div class="flex border-b border-slate-800 text-xs font-bold">
+                <button data-tab="tab-leaders"
+                    class="tab-btn flex-1 py-2 text-amber-400 border-b-2 border-amber-400 transition">
+                    <i class="fa-solid fa-trophy mr-1"></i>Stand
+                </button>
+                <button data-tab="tab-log"
+                    class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
+                    <i class="fa-solid fa-clock-rotate-left mr-1"></i>Historiek
+                </button>
+                <button data-tab="tab-players"
+                    class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
+                    <i class="fa-solid fa-user-group mr-1"></i>Spelers
+                </button>
+                <button data-tab="tab-data"
+                    class="tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition">
+                    <i class="fa-solid fa-file-import mr-1"></i>Teams JSON
+                </button>
+            </div>
+
+            <!-- TAB 1: LEADERBOARD -->
+            <div id="tab-leaders" class="tab-pane flex-1 overflow-y-auto space-y-1.5 pr-1">
+                <!-- Populated by JS -->
+            </div>
+
+            <!-- TAB 2: BATTLE LOG -->
+            <div id="tab-log" class="tab-pane hidden flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
+                <div class="text-slate-500 italic text-center py-6">Nog geen wedstrijden gespeeld.</div>
+            </div>
+
+            <!-- TAB: SPELERS (transfers na gewonnen wedstrijden) -->
+            <div id="tab-players" class="tab-pane hidden flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+                <input id="pl-filter" type="text" placeholder="Zoek speler of club..." autocomplete="off"
+                    class="w-full rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400">
+                <div id="pl-list" class="space-y-2.5"></div>
+            </div>
+
+            <!-- TAB 3: IMPORT / EXPORT / CUSTOM TEAMS -->
+            <div id="tab-data" class="tab-pane hidden flex-1 overflow-y-auto space-y-2.5 pr-1 text-xs">
+                <p class="text-slate-300 leading-relaxed">
+                    Importeer je eigen <code class="text-amber-300">.json</code> bestand (zoals <code
+                        class="text-amber-300">belgian_teams.json</code> of alle 700+ EA FC 26 clubs) of download de
+                    huidige lijst.
+                </p>
+
+                <label
+                    class="w-full py-2.5 px-3 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/50 text-sky-300 font-bold flex items-center justify-center gap-2 cursor-pointer transition">
+                    <i class="fa-solid fa-upload"></i> Importeer Teams (.json)
+                    <input type="file" id="file-input" accept="application/json,.json" class="hidden">
+                </label>
+
+                <button id="btn-add-json-teams"
+                    class="w-full py-2 px-3 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 text-purple-300 font-bold flex items-center justify-center gap-2 transition">
+                    <i class="fa-solid fa-plus"></i> Voeg JSON samen met huidige kaart
+                </button>
+                <input type="file" id="file-merge-input" accept="application/json,.json" class="hidden">
+
+                <button id="btn-export-json"
+                    class="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-semibold flex items-center justify-center gap-2 transition">
+                    <i class="fa-solid fa-download"></i> Exporteer Huidige Teams (.json)
+                </button>
+
+                <div class="pt-2 border-t border-slate-800">
+                    <button id="btn-reset-game"
+                        class="w-full py-2 px-3 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-rotate-right"></i> Reset Volledige Game
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </aside>
+
+    <!-- SPELER-TRANSFER MODAL (verschijnt na elke gewonnen club-wedstrijd) -->
+    <div id="transfer-modal"
+        class="fixed inset-0 z-[2100] hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="w-full max-w-md rounded-2xl border border-amber-400/40 bg-slate-900 p-5 shadow-2xl">
+            <div class="text-[10px] uppercase tracking-widest text-amber-400 font-black mb-1">
+                <i class="fa-solid fa-right-left mr-1"></i>Speler-transfer
+            </div>
+            <h3 id="tr-title" class="text-lg font-black text-white leading-tight"></h3>
+            <p id="tr-sub" class="text-xs text-slate-400 mt-1 leading-snug"></p>
+
+            <label id="tr-label" for="tr-name" class="block mt-3 mb-1 text-xs font-bold text-slate-300"></label>
+            <input id="tr-name" list="tr-list" type="text" autocomplete="off" placeholder="Naam van de speler"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400">
+            <datalist id="tr-list"></datalist>
+
+            <label for="tr-note" class="block mt-3 mb-1 text-xs font-bold text-slate-300">Notitie <span
+                    class="font-normal text-slate-500">(optioneel: positie / OVR)</span></label>
+            <input id="tr-note" type="text" autocomplete="off" placeholder="bv. ST • 84"
+                class="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400">
+
+            <div id="tr-err" class="hidden mt-2 text-xs text-rose-400"></div>
+
+            <div class="grid grid-cols-2 gap-2 mt-4">
+                <button id="tr-confirm"
+                    class="py-2.5 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm transition">
+                    Bevestig transfer
+                </button>
+                <button id="tr-skip"
+                    class="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-sm transition">
+                    Geen speler nemen
+                </button>
+            </div>
+            <button id="tr-cancel" class="mt-3 text-xs text-slate-400 hover:text-white underline">
+                Terug (wedstrijd nog niet registreren)
+            </button>
+        </div>
+    </div>
+
+    <!-- KOMPAS: draait en wijst de tegenstander aan -->
+    <div id="compass-overlay"
+        class="fixed inset-0 z-[1500] hidden items-center justify-center bg-black/35 pointer-events-none">
+        <div class="flex flex-col items-center gap-3">
+            <div class="relative" style="width:240px;height:240px;">
+                <svg id="compass-face" viewBox="0 0 200 200" class="absolute inset-0 w-full h-full"></svg>
+                <svg id="compass-needle" viewBox="0 0 200 200" class="absolute inset-0 w-full h-full"
+                    style="transform-origin:50% 50%;">
+                    <polygon points="100,18 110,100 90,100" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5" />
+                    <polygon points="90,100 110,100 100,178" fill="#e2e8f0" stroke="#475569" stroke-width="1.5" />
+                    <circle cx="100" cy="100" r="7" fill="#fbbf24" stroke="#78350f" stroke-width="2" />
+                </svg>
+            </div>
+            <div id="compass-label"
+                class="px-4 py-2 rounded-xl bg-slate-950/90 border border-amber-400/50 text-amber-300 font-black text-sm text-center max-w-[340px]">
+            </div>
+        </div>
+    </div>
+
+    <!-- CENTER BATTLE / UPGRADE MODAL -->
+    <div id="battle-modal"
+        class="fixed inset-0 z-[2000] hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div
+            class="bg-slate-900 border-2 border-slate-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl text-center relative overflow-hidden">
+            <!-- Top Decorative Bar -->
+            <div id="modal-top-bar"
+                class="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-orange-500 to-red-600">
+            </div>
+
+            <div id="modal-badge"
+                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 text-amber-400 text-xs font-extrabold uppercase tracking-widest mb-2 border border-slate-700">
+                <i class="fa-solid fa-fire"></i> EA FC 26 Matchup
+            </div>
+
+            <h2 id="modal-title" class="font-broadcast text-3xl font-extrabold text-white tracking-wide">BATTLE!</h2>
+            <p id="modal-subtitle" class="text-sm text-slate-300 mt-1 mb-5">Speel of simuleer de wedstrijd in EA FC 26
+                en kies de winnaar:</p>
+
+            <!-- VS Showcase -->
+            <div id="modal-vs-box"
+                class="grid grid-cols-11 items-center gap-2 bg-slate-950/90 p-4 rounded-xl border border-slate-800 mb-6">
+                <!-- Attacker -->
+                <div class="col-span-5 flex flex-col items-center">
+                    <span
+                        class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-amber-400 text-slate-950 mb-1.5">Aanvaller</span>
+                    <div id="modal-att-dot" class="w-8 h-8 rounded-full border-2 border-white shadow-lg mb-1.5"></div>
+                    <div id="modal-att-name" class="font-extrabold text-base text-amber-400 leading-tight">-</div>
+                    <div id="modal-att-meta" class="text-[11px] text-slate-400 mt-0.5">1 Regio</div>
+                </div>
+
+                <!-- VS Divider -->
+                <div class="col-span-1 font-broadcast text-2xl font-black text-slate-500">VS</div>
+
+                <!-- Defender -->
+                <div class="col-span-5 flex flex-col items-center">
+                    <span id="modal-def-role"
+                        class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-orange-500 text-white mb-1.5">Verdediger</span>
+                    <div id="modal-def-dot" class="w-8 h-8 rounded-full border-2 border-white shadow-lg mb-1.5"></div>
+                    <div id="modal-def-name" class="font-extrabold text-base text-orange-400 leading-tight">-</div>
+                    <div id="modal-def-meta" class="text-[11px] text-slate-400 mt-0.5">1 Regio</div>
+                </div>
+            </div>
+
+            <!-- Dynamic Club Name Buttons (For Real Club Battle) -->
+            <div id="modal-club-buttons" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button id="btn-modal-attwin"
+                    class="py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm shadow-lg shadow-amber-400/25 transition flex flex-col items-center justify-center">
+                    <span class="text-[10px] uppercase tracking-wider opacity-80">Aanvaller Wint</span>
+                    <span id="btn-modal-attwin-label" class="text-base font-black truncate max-w-full">Sunderland
+                        Won</span>
+                </button>
+                <button id="btn-modal-defwin"
+                    class="py-3.5 px-4 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-sm shadow-lg shadow-orange-600/25 transition flex flex-col items-center justify-center">
+                    <span class="text-[10px] uppercase tracking-wider opacity-85">Verdediger Wint</span>
+                    <span id="btn-modal-defwin-label" class="text-base font-black truncate max-w-full">Leeds United
+                        Won</span>
+                </button>
+            </div>
+
+            <!-- Free Upgrade Button (For Neutral Zone) -->
+            <div id="modal-neutral-buttons" class="hidden">
+                <button id="btn-modal-claim-neutral"
+                    class="w-full py-4 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base shadow-xl shadow-emerald-500/25 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span id="btn-modal-neutral-label">Annex Neutral Zone & +1 Squad Upgrade!</span>
+                </button>
+            </div>
+
+            <button id="btn-modal-close" class="mt-4 text-xs text-slate-400 hover:text-white underline">
+                Sluit venster (bekijk eerst op kaart)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================================
+           1. MASTER DATASET: REAL-WORLD EA FC 26 CLUBS (BELGIUM, EUROPE & WORLD)
+           ============================================================================ */
+        let MASTER_CLUBS = [
+            /* ---- LIGA PROFESIONAL (ARGENTINIË) (32 clubs) ---- */
+            { id: "boc", name: "Boca Juniors", league: "world", lat: -34.6356, lng: -58.3647, color: "#003399" },
+            { id: "riv", name: "River Plate", league: "world", lat: -34.5453, lng: -58.4497, color: "#e30613" },
+            { id: "ar_ald", name: "Aldosivi", league: "world", lat: -38.0161, lng: -57.5781, color: "#ffd700" },
+            { id: "ar_tuc", name: "Atlético Tucumán", league: "world", lat: -26.8428, lng: -65.2128, color: "#5bc2e7" },
+            { id: "ar_arg", name: "Argentinos Juniors", league: "world", lat: -34.5936, lng: -58.4706, color: "#e30613" },
+            { id: "ar_bar", name: "Barracas Central", league: "world", lat: -34.6392, lng: -58.3892, color: "#e30613" },
+            { id: "ar_ban", name: "Banfield", league: "world", lat: -34.7439, lng: -58.3975, color: "#00a651" },
+            { id: "ar_bel", name: "Belgrano", league: "world", lat: -31.398, lng: -64.183, color: "#5bc2e7" },
+            { id: "ar_cco", name: "Central Córdoba (SdE)", league: "world", lat: -27.7758, lng: -64.2508, color: "#111111" },
+            { id: "ar_dyj", name: "Defensa y Justicia", league: "world", lat: -34.7947, lng: -58.2806, color: "#ffd700" },
+            { id: "ar_rie", name: "Deportivo Riestra", league: "world", lat: -34.6486, lng: -58.4172, color: "#111111" },
+            { id: "ar_est", name: "Estudiantes", league: "world", lat: -34.921, lng: -57.966, color: "#e30613" },
+            { id: "ar_gim", name: "Gimnasia La Plata", league: "world", lat: -34.9145, lng: -57.956, color: "#1e3a8a" },
+            { id: "ar_god", name: "Godoy Cruz", league: "world", lat: -32.9022, lng: -68.8667, color: "#0057b8" },
+            { id: "ar_hur", name: "Huracán", league: "world", lat: -34.641, lng: -58.3999, color: "#e30613" },
+            { id: "ar_ind", name: "Independiente", league: "world", lat: -34.6702, lng: -58.3703, color: "#e30613" },
+            { id: "ar_iri", name: "Independiente Rivadavia", league: "world", lat: -32.8997, lng: -68.8553, color: "#0057b8" },
+            { id: "ar_ins", name: "Instituto", league: "world", lat: -31.393, lng: -64.1878, color: "#e30613" },
+            { id: "ar_lan", name: "Lanús", league: "world", lat: -34.7011, lng: -58.3892, color: "#8b1a2b" },
+            { id: "ar_new", name: "Newell’s Old Boys", league: "world", lat: -32.957, lng: -60.656, color: "#e30613" },
+            { id: "ar_pla", name: "Platense", league: "world", lat: -34.5136, lng: -58.4756, color: "#6b3a1f" },
+            { id: "ar_rac", name: "Racing Club", league: "world", lat: -34.6677, lng: -58.368, color: "#5bc2e7" },
+            { id: "ar_ros", name: "Rosario Central", league: "world", lat: -32.9278, lng: -60.63, color: "#0057b8" },
+            { id: "ar_sms", name: "San Martín (SJ)", league: "world", lat: -31.5395, lng: -68.5558, color: "#00a651" },
+            { id: "ar_slo", name: "San Lorenzo", league: "world", lat: -34.6531, lng: -58.4443, color: "#0a2a5e" },
+            { id: "ar_sar", name: "Sarmiento", league: "world", lat: -34.5927, lng: -60.9331, color: "#00a651" },
+            { id: "ar_tal", name: "Talleres", league: "world", lat: -31.3669, lng: -64.2428, color: "#0a2a5e" },
+            { id: "ar_tig", name: "Tigre", league: "world", lat: -34.4556, lng: -58.5458, color: "#0057b8" },
+            { id: "ar_uni", name: "Unión", league: "world", lat: -31.6169, lng: -60.6767, color: "#e30613" },
+            { id: "ar_vel", name: "Vélez Sarsfield", league: "world", lat: -34.6353, lng: -58.5206, color: "#0057b8" },
+            { id: "ar_gme", name: "Gimnasia y Esgrima (Mendoza)", league: "world", lat: -32.8785, lng: -68.846, color: "#111111" },
+            { id: "ar_erc", name: "Estudiantes (Río Cuarto)", league: "world", lat: -33.123, lng: -64.3493, color: "#e30613" },
+            /* ---- A-LEAGUE (AUSTRALIË) (13 clubs) ---- */
+            { id: "au_ade", name: "Adelaide United", league: "world", lat: -34.9047, lng: 138.5703, color: "#e30613" },
+            { id: "au_auc", name: "Auckland FC", league: "world", lat: -36.9244, lng: 174.8067, color: "#00a0e3" },
+            { id: "au_bri", name: "Brisbane Roar", league: "world", lat: -27.4647, lng: 153.0094, color: "#ff6600" },
+            { id: "au_ccm", name: "Central Coast Mariners", league: "world", lat: -33.4258, lng: 151.3414, color: "#ffd700" },
+            { id: "au_mac", name: "Macarthur FC", league: "world", lat: -34.0583, lng: 150.8152, color: "#111111" },
+            { id: "au_mci", name: "Melbourne City", league: "world", lat: -37.825, lng: 144.9833, color: "#5bc2e7" },
+            { id: "au_mvi", name: "Melbourne Victory", league: "world", lat: -37.825, lng: 144.9833, color: "#0a2a5e" },
+            { id: "au_new", name: "Newcastle Jets", league: "world", lat: -32.9178, lng: 151.7261, color: "#0057b8" },
+            { id: "au_per", name: "Perth Glory", league: "world", lat: -31.9461, lng: 115.8725, color: "#6a1b9a" },
+            { id: "au_syd", name: "Sydney FC", league: "world", lat: -33.889, lng: 151.225, color: "#5bc2e7" },
+            { id: "au_wsw", name: "Western Sydney Wanderers", league: "world", lat: -33.8078, lng: 151.0028, color: "#e30613" },
+            { id: "au_wel", name: "Wellington Phoenix", league: "world", lat: -41.2731, lng: 174.7861, color: "#ffd700" },
+            { id: "au_wun", name: "Western United", league: "world", lat: -37.8303, lng: 144.6575, color: "#00a651" },
+            /* ---- AUSTRIAN BUNDESLIGA (12 clubs) ---- */
+            { id: "rbs", name: "Red Bull Salzburg", league: "europe_other", lat: 47.8164, lng: 12.9983, color: "#dc2626" },
+            { id: "sts", name: "SK Sturm Graz", league: "europe_other", lat: 47.0714, lng: 15.4561, color: "#111111" },
+            { id: "las", name: "LASK", league: "europe_other", lat: 48.2706, lng: 14.2292, color: "#111111" },
+            { id: "rap", name: "SK Rapid Wien", league: "europe_other", lat: 48.1964, lng: 16.2753, color: "#00a651" },
+            { id: "aus", name: "FK Austria Wien", league: "europe_other", lat: 48.1608, lng: 16.4083, color: "#6a1b9a" },
+            { id: "wac", name: "Wolfsberger AC", league: "europe_other", lat: 46.8319, lng: 14.8458, color: "#111111" },
+            { id: "tsh", name: "TSV Hartberg", league: "europe_other", lat: 47.2833, lng: 15.9667, color: "#e30613" },
+            { id: "alt", name: "SCR Altach", league: "europe_other", lat: 47.3883, lng: 9.65, color: "#ffd700" },
+            { id: "bwl", name: "BW Linz", league: "europe_other", lat: 48.3069, lng: 14.3047, color: "#0057b8" },
+            { id: "wsg", name: "WSG Tirol", league: "europe_other", lat: 47.2517, lng: 11.4217, color: "#111111" },
+            { id: "gak", name: "Grazer AK", league: "europe_other", lat: 47.0714, lng: 15.4561, color: "#e30613" },
+            { id: "rie", name: "SV Ried", league: "europe_other", lat: 48.2192, lng: 13.4883, color: "#00a651" },
+            /* ---- JUPILER PRO LEAGUE (16 clubs) ---- */
+            { id: "clu", name: "Club Brugge", league: "belgium", lat: 51.1933, lng: 3.1806, color: "#00529b" },
+            { id: "and", name: "Anderlecht", league: "belgium", lat: 50.8342, lng: 4.2983, color: "#4b235e" },
+            { id: "usg", name: "Union SG", league: "belgium", lat: 50.8167, lng: 4.3275, color: "#ffd700" },
+            { id: "gnk", name: "KRC Genk", league: "belgium", lat: 51.0047, lng: 5.5328, color: "#0055a5" },
+            { id: "ant", name: "Royal Antwerp", league: "belgium", lat: 51.2269, lng: 4.4608, color: "#da291c" },
+            { id: "gnt", name: "KAA Gent", league: "belgium", lat: 51.0161, lng: 3.7336, color: "#00529b" },
+            { id: "sta", name: "Standard Liège", league: "belgium", lat: 50.6097, lng: 5.5439, color: "#e30613" },
+            { id: "cer", name: "Cercle Brugge", league: "belgium", lat: 51.1933, lng: 3.1806, color: "#006a3a" },
+            { id: "kvm", name: "KV Mechelen", league: "belgium", lat: 51.0433, lng: 4.4828, color: "#ffd700" },
+            { id: "stv", name: "Sint-Truiden (STVV)", league: "belgium", lat: 50.8258, lng: 5.1769, color: "#fff200" },
+            { id: "cha", name: "Sporting Charleroi", league: "belgium", lat: 50.4144, lng: 4.4533, color: "#000000" },
+            { id: "wes", name: "KVC Westerlo", league: "belgium", lat: 51.0944, lng: 4.9317, color: "#fff200" },
+            { id: "ohl", name: "OH Leuven", league: "belgium", lat: 50.8683, lng: 4.7136, color: "#00a650" },
+            { id: "den", name: "FCV Dender EH", league: "belgium", lat: 50.8872, lng: 4.0722, color: "#000080" },
+            { id: "lal", name: "RAAL La Louvière", league: "belgium", lat: 50.485, lng: 4.19, color: "#00a651" },
+            { id: "zul", name: "Zulte Waregem", league: "belgium", lat: 50.8864, lng: 3.4358, color: "#e30613" },
+            /* ---- CHINESE SUPER LEAGUE (18 clubs) ---- */
+            { id: "cn_bei", name: "Beijing Guoan", league: "world", lat: 39.93, lng: 116.4467, color: "#00a651" },
+            { id: "cn_cha", name: "Changchun Yatai", league: "world", lat: 43.82, lng: 125.42, color: "#ffd700" },
+            { id: "cn_che", name: "Chengdu Rongcheng", league: "world", lat: 30.6, lng: 104.15, color: "#e30613" },
+            { id: "cn_dal", name: "Dalian Yingbo", league: "world", lat: 38.889, lng: 121.565, color: "#0057b8" },
+            { id: "cn_hen", name: "Henan FC", league: "world", lat: 34.72, lng: 113.67, color: "#e30613" },
+            { id: "cn_mei", name: "Meizhou Hakka", league: "world", lat: 23.93, lng: 115.78, color: "#e30613" },
+            { id: "cn_qhn", name: "Qingdao Hainiu", league: "world", lat: 36.15, lng: 120.45, color: "#ffd700" },
+            { id: "cn_qwc", name: "Qingdao West Coast", league: "world", lat: 36.09, lng: 120.39, color: "#0057b8" },
+            { id: "cn_sha", name: "Shandong Taishan", league: "world", lat: 36.65, lng: 117.12, color: "#ff6600" },
+            { id: "cn_shs", name: "Shanghai Shenhua", league: "world", lat: 31.275, lng: 121.481, color: "#0057b8" },
+            { id: "cn_shp", name: "Shanghai Port", league: "world", lat: 31.1881, lng: 121.4918, color: "#e30613" },
+            { id: "cn_szp", name: "Shenzhen Peng City", league: "world", lat: 22.6967, lng: 114.22, color: "#e30613" },
+            { id: "cn_tia", name: "Tianjin Jinmen Tiger", league: "world", lat: 39.0847, lng: 117.12, color: "#0057b8" },
+            { id: "cn_yun", name: "Yunnan Yukun", league: "world", lat: 25.01, lng: 102.77, color: "#e30613" },
+            { id: "cn_wuh", name: "Wuhan Three Towns", league: "world", lat: 30.5113, lng: 114.2461, color: "#e30613" },
+            { id: "cn_zhe", name: "Zhejiang FC", league: "world", lat: 30.26, lng: 120.138, color: "#00a651" },
+            { id: "cn_lia", name: "Liaoning Tieren", league: "world", lat: 41.8057, lng: 123.4315, color: "#e30613" },
+            { id: "cn_cqt", name: "Chongqing Tonglianglong", league: "world", lat: 29.64, lng: 106.55, color: "#ffd700" },
+            /* ---- SUPERLIGA (DENEMARKEN) (12 clubs) ---- */
+            { id: "cph", name: "FC København", league: "europe_other", lat: 55.7027, lng: 12.5725, color: "#1e40af" },
+            { id: "mid", name: "FC Midtjylland", league: "europe_other", lat: 56.1203, lng: 8.9461, color: "#e30613" },
+            { id: "bif", name: "Brøndby IF", league: "europe_other", lat: 55.6161, lng: 12.4181, color: "#ffd700" },
+            { id: "agf", name: "AGF Aarhus", league: "europe_other", lat: 56.1306, lng: 10.2036, color: "#d9d9d9" },
+            { id: "sif", name: "Silkeborg IF", league: "europe_other", lat: 56.1833, lng: 9.5589, color: "#0057b8" },
+            { id: "rfc", name: "Randers FC", league: "europe_other", lat: 56.4558, lng: 10.0147, color: "#e30613" },
+            { id: "vib", name: "Viborg FF", league: "europe_other", lat: 56.4339, lng: 9.4139, color: "#00a651" },
+            { id: "nsj", name: "FC Nordsjælland", league: "europe_other", lat: 55.8112, lng: 12.3586, color: "#e30613" },
+            { id: "son", name: "SønderjyskE", league: "europe_other", lat: 55.2492, lng: 9.4903, color: "#0057b8" },
+            { id: "veb", name: "Vejle Boldklub", league: "europe_other", lat: 55.7089, lng: 9.5167, color: "#e30613" },
+            { id: "frd", name: "FC Fredericia", league: "europe_other", lat: 55.5658, lng: 9.7517, color: "#e30613" },
+            { id: "obo", name: "OB Odense", league: "europe_other", lat: 55.3992, lng: 10.4092, color: "#0057b8" },
+            /* ---- PREMIER LEAGUE (20 clubs) ---- */
+            { id: "ars", name: "Arsenal", league: "uk", lat: 51.5549, lng: -0.1084, color: "#ef0107" },
+            { id: "avl", name: "Aston Villa", league: "uk", lat: 52.509, lng: -1.8847, color: "#95bfe5" },
+            { id: "bou", name: "Bournemouth", league: "uk", lat: 50.7352, lng: -1.8384, color: "#b50e12" },
+            { id: "bre", name: "Brentford", league: "uk", lat: 51.4907, lng: -0.2886, color: "#e8a0a0" },
+            { id: "bha", name: "Brighton", league: "uk", lat: 50.8616, lng: -0.0837, color: "#0057b8" },
+            { id: "bur", name: "Burnley", league: "uk", lat: 53.789, lng: -2.2302, color: "#6c1d45" },
+            { id: "che", name: "Chelsea", league: "uk", lat: 51.4817, lng: -0.191, color: "#034694" },
+            { id: "cry", name: "Crystal Palace", league: "uk", lat: 51.3983, lng: -0.0856, color: "#c4122e" },
+            { id: "eve", name: "Everton", league: "uk", lat: 53.4261, lng: -3.004, color: "#1f4fb0" },
+            { id: "ful", name: "Fulham", league: "uk", lat: 51.4749, lng: -0.2217, color: "#e9e9e9" },
+            { id: "lee", name: "Leeds United", league: "uk", lat: 53.7778, lng: -1.5722, color: "#ffcd00" },
+            { id: "liv", name: "Liverpool", league: "uk", lat: 53.4308, lng: -2.9608, color: "#c8102e" },
+            { id: "mci", name: "Manchester City", league: "uk", lat: 53.4831, lng: -2.2004, color: "#6cabdd" },
+            { id: "mun", name: "Manchester United", league: "uk", lat: 53.4631, lng: -2.2913, color: "#da291c" },
+            { id: "new", name: "Newcastle United", league: "uk", lat: 54.9756, lng: -1.6217, color: "#3a3a3a" },
+            { id: "nfo", name: "Nottingham Forest", league: "uk", lat: 52.94, lng: -1.1328, color: "#dd0000" },
+            { id: "sun", name: "Sunderland", league: "uk", lat: 54.9146, lng: -1.3883, color: "#eb172b" },
+            { id: "tot", name: "Tottenham", league: "uk", lat: 51.6043, lng: -0.0664, color: "#132257" },
+            { id: "whu", name: "West Ham", league: "uk", lat: 51.5387, lng: -0.0166, color: "#7a263a" },
+            { id: "wol", name: "Wolves", league: "uk", lat: 52.5901, lng: -2.1304, color: "#fdb913" },
+            /* ---- CHAMPIONSHIP (24 clubs) ---- */
+            { id: "bir", name: "Birmingham City", league: "uk", lat: 52.4756, lng: -1.8681, color: "#0057b8" },
+            { id: "blb", name: "Blackburn Rovers", league: "uk", lat: 53.7286, lng: -2.4893, color: "#0057b8" },
+            { id: "bri", name: "Bristol City", league: "uk", lat: 51.44, lng: -2.6203, color: "#e30613" },
+            { id: "chr", name: "Charlton Athletic", league: "uk", lat: 51.4864, lng: 0.0364, color: "#e30613" },
+            { id: "cov", name: "Coventry City", league: "uk", lat: 52.4488, lng: -1.496, color: "#5bc2e7" },
+            { id: "der", name: "Derby County", league: "uk", lat: 52.915, lng: -1.4472, color: "#d9d9d9" },
+            { id: "hul", name: "Hull City", league: "uk", lat: 53.7461, lng: -0.3678, color: "#f5a800" },
+            { id: "ips", name: "Ipswich Town", league: "uk", lat: 52.055, lng: 1.145, color: "#0057b8" },
+            { id: "lei", name: "Leicester City", league: "uk", lat: 52.6203, lng: -1.1422, color: "#003090" },
+            { id: "mbr", name: "Middlesbrough", league: "uk", lat: 54.5783, lng: -1.2169, color: "#e30613" },
+            { id: "mlw", name: "Millwall", league: "uk", lat: 51.4861, lng: -0.0508, color: "#0a2a5e" },
+            { id: "nor", name: "Norwich City", league: "uk", lat: 52.6222, lng: 1.3086, color: "#ffd700" },
+            { id: "oxf", name: "Oxford United", league: "uk", lat: 51.7164, lng: -1.2081, color: "#ffd700" },
+            { id: "pmp", name: "Portsmouth", league: "uk", lat: 50.7964, lng: -1.0639, color: "#0057b8" },
+            { id: "pre", name: "Preston North End", league: "uk", lat: 53.7722, lng: -2.6881, color: "#d9d9d9" },
+            { id: "qpr", name: "Queens Park Rangers", league: "uk", lat: 51.5093, lng: -0.2322, color: "#0057b8" },
+            { id: "shu", name: "Sheffield United", league: "uk", lat: 53.3703, lng: -1.471, color: "#e30613" },
+            { id: "shw", name: "Sheffield Wednesday", league: "uk", lat: 53.4114, lng: -1.5006, color: "#0057b8" },
+            { id: "sou", name: "Southampton", league: "uk", lat: 50.9058, lng: -1.3911, color: "#e30613" },
+            { id: "stk", name: "Stoke City", league: "uk", lat: 52.9884, lng: -2.1757, color: "#e30613" },
+            { id: "swa", name: "Swansea City", league: "uk", lat: 51.6428, lng: -3.9347, color: "#d9d9d9" },
+            { id: "wat", name: "Watford", league: "uk", lat: 51.65, lng: -0.4017, color: "#fbee23" },
+            { id: "wba", name: "West Bromwich Albion", league: "uk", lat: 52.509, lng: -1.9639, color: "#122f67" },
+            { id: "wre", name: "Wrexham", league: "uk", lat: 53.0531, lng: -3.0036, color: "#e30613" },
+            /* ---- LEAGUE ONE (24 clubs) ---- */
+            { id: "bsl", name: "Barnsley", league: "uk", lat: 53.5522, lng: -1.4672, color: "#e30613" },
+            { id: "bkp", name: "Blackpool", league: "uk", lat: 53.8047, lng: -3.0481, color: "#ff6600" },
+            { id: "bwf", name: "Bolton Wanderers", league: "uk", lat: 53.5806, lng: -2.5356, color: "#d9d9d9" },
+            { id: "bfc", name: "Bradford City", league: "uk", lat: 53.8042, lng: -1.7589, color: "#8b1a2b" },
+            { id: "bua", name: "Burton Albion", league: "uk", lat: 52.8217, lng: -1.6272, color: "#ffd700" },
+            { id: "car", name: "Cardiff City", league: "uk", lat: 51.4728, lng: -3.2031, color: "#0057b8" },
+            { id: "dnr", name: "Doncaster Rovers", league: "uk", lat: 53.51, lng: -1.1136, color: "#e30613" },
+            { id: "exe", name: "Exeter City", league: "uk", lat: 50.7306, lng: -3.5208, color: "#e30613" },
+            { id: "hud", name: "Huddersfield Town", league: "uk", lat: 53.6542, lng: -1.7681, color: "#0057b8" },
+            { id: "ley", name: "Leyton Orient", league: "uk", lat: 51.56, lng: -0.0128, color: "#e30613" },
+            { id: "lin", name: "Lincoln City", league: "uk", lat: 53.2461, lng: -0.5408, color: "#e30613" },
+            { id: "lut", name: "Luton Town", league: "uk", lat: 51.8844, lng: -0.4317, color: "#ff6600" },
+            { id: "mns", name: "Mansfield Town", league: "uk", lat: 53.1389, lng: -1.2014, color: "#ffd700" },
+            { id: "nth", name: "Northampton Town", league: "uk", lat: 52.2353, lng: -0.9336, color: "#8b1a2b" },
+            { id: "pet", name: "Peterborough United", league: "uk", lat: 52.5647, lng: -0.2406, color: "#0057b8" },
+            { id: "ply", name: "Plymouth Argyle", league: "uk", lat: 50.3881, lng: -4.1508, color: "#00a651" },
+            { id: "pvl", name: "Port Vale", league: "uk", lat: 53.0494, lng: -2.1928, color: "#d9d9d9" },
+            { id: "rea", name: "Reading", league: "uk", lat: 51.4222, lng: -0.9828, color: "#0057b8" },
+            { id: "rot", name: "Rotherham United", league: "uk", lat: 53.4278, lng: -1.3622, color: "#e30613" },
+            { id: "stg", name: "Stevenage", league: "uk", lat: 51.8917, lng: -0.1925, color: "#e30613" },
+            { id: "stc", name: "Stockport County", league: "uk", lat: 53.4, lng: -2.1642, color: "#0057b8" },
+            { id: "wig", name: "Wigan Athletic", league: "uk", lat: 53.5478, lng: -2.6542, color: "#0057b8" },
+            { id: "wyc", name: "Wycombe Wanderers", league: "uk", lat: 51.6306, lng: -0.8, color: "#0057b8" },
+            { id: "awm", name: "AFC Wimbledon", league: "uk", lat: 51.4339, lng: -0.1869, color: "#0057b8" },
+            /* ---- LEAGUE TWO (24 clubs) ---- */
+            { id: "acc", name: "Accrington Stanley", league: "uk", lat: 53.765, lng: -2.3706, color: "#e30613" },
+            { id: "brw", name: "Barrow", league: "uk", lat: 54.1219, lng: -3.2272, color: "#0057b8" },
+            { id: "brr", name: "Bristol Rovers", league: "uk", lat: 51.4861, lng: -2.5831, color: "#0057b8" },
+            { id: "brm", name: "Bromley", league: "uk", lat: 51.3911, lng: 0.0186, color: "#d9d9d9" },
+            { id: "cmb", name: "Cambridge United", league: "uk", lat: 52.2125, lng: 0.1544, color: "#ffd700" },
+            { id: "chl", name: "Cheltenham Town", league: "uk", lat: 51.9061, lng: -2.0611, color: "#e30613" },
+            { id: "chf", name: "Chesterfield", league: "uk", lat: 53.2536, lng: -1.4167, color: "#0057b8" },
+            { id: "col", name: "Colchester United", league: "uk", lat: 51.9231, lng: 0.8933, color: "#0057b8" },
+            { id: "crw", name: "Crawley Town", league: "uk", lat: 51.0989, lng: -0.1989, color: "#e30613" },
+            { id: "cra", name: "Crewe Alexandra", league: "uk", lat: 53.0872, lng: -2.4358, color: "#e30613" },
+            { id: "fle", name: "Fleetwood Town", league: "uk", lat: 53.9183, lng: -3.0286, color: "#e30613" },
+            { id: "gil", name: "Gillingham", league: "uk", lat: 51.3844, lng: 0.5608, color: "#0057b8" },
+            { id: "grm", name: "Grimsby Town", league: "uk", lat: 53.57, lng: -0.0467, color: "#d9d9d9" },
+            { id: "har", name: "Harrogate Town", league: "uk", lat: 53.9958, lng: -1.5242, color: "#ffd700" },
+            { id: "mkd", name: "MK Dons", league: "uk", lat: 52.0092, lng: -0.7336, color: "#d9d9d9" },
+            { id: "nwp", name: "Newport County", league: "uk", lat: 51.5878, lng: -2.9889, color: "#ffd700" },
+            { id: "ntc", name: "Notts County", league: "uk", lat: 52.9425, lng: -1.1369, color: "#d9d9d9" },
+            { id: "old", name: "Oldham Athletic", league: "uk", lat: 53.555, lng: -2.1286, color: "#0057b8" },
+            { id: "sal", name: "Salford City", league: "uk", lat: 53.5156, lng: -2.2742, color: "#e30613" },
+            { id: "shr", name: "Shrewsbury Town", league: "uk", lat: 52.6903, lng: -2.7489, color: "#0057b8" },
+            { id: "swi", name: "Swindon Town", league: "uk", lat: 51.5642, lng: -1.7708, color: "#e30613" },
+            { id: "tra", name: "Tranmere Rovers", league: "uk", lat: 53.3731, lng: -3.0106, color: "#d9d9d9" },
+            { id: "wal", name: "Walsall", league: "uk", lat: 52.565, lng: -1.9906, color: "#e30613" },
+            { id: "brn", name: "Barnet", league: "uk", lat: 51.6014, lng: -0.2656, color: "#ffd700" },
+            /* ---- LIGUE 1 (18 clubs) ---- */
+            { id: "psg", name: "Paris Saint-Germain", league: "france", lat: 48.8414, lng: 2.253, color: "#004170" },
+            { id: "asm", name: "AS Monaco", league: "france", lat: 43.7275, lng: 7.4156, color: "#e51b22" },
+            { id: "sb29", name: "Stade Brestois", league: "france", lat: 48.4028, lng: -4.4617, color: "#e30613" },
+            { id: "losc", name: "LOSC Lille", league: "france", lat: 50.6119, lng: 3.1306, color: "#e01e13" },
+            { id: "ogcn", name: "OGC Nice", league: "france", lat: 43.705, lng: 7.1925, color: "#000000" },
+            { id: "ol", name: "Olympique Lyonnais", league: "france", lat: 45.7653, lng: 4.9822, color: "#122c81" },
+            { id: "rcl", name: "RC Lens", league: "france", lat: 50.4328, lng: 2.815, color: "#ec1c24" },
+            { id: "om", name: "Olympique Marseille", league: "france", lat: 43.2697, lng: 5.3958, color: "#2faee0" },
+            { id: "srfc", name: "Stade Rennais", league: "france", lat: 48.1075, lng: -1.7128, color: "#e30613" },
+            { id: "rcs", name: "RC Strasbourg", league: "france", lat: 48.56, lng: 7.755, color: "#0095d8" },
+            { id: "nan", name: "FC Nantes", league: "france", lat: 47.2561, lng: -1.5253, color: "#f9d71c" },
+            { id: "tou", name: "Toulouse FC", league: "france", lat: 43.5833, lng: 1.4344, color: "#7d3c98" },
+            { id: "aux", name: "AJ Auxerre", league: "france", lat: 47.7869, lng: 3.5886, color: "#0055a4" },
+            { id: "ang", name: "Angers SCO", league: "france", lat: 47.4603, lng: -0.5311, color: "#1a1a1a" },
+            { id: "lha", name: "Le Havre AC", league: "france", lat: 49.4989, lng: 0.1703, color: "#00a0e3" },
+            { id: "lor", name: "FC Lorient", league: "france", lat: 47.7481, lng: -3.3689, color: "#f58220" },
+            { id: "met", name: "FC Metz", league: "france", lat: 49.1097, lng: 6.1594, color: "#8b1a2b" },
+            { id: "pfc", name: "Paris FC", league: "france", lat: 48.8189, lng: 2.3467, color: "#0a3d91" },
+            /* ---- LIGUE 2 (18 clubs) ---- */
+            { id: "sdr", name: "Stade de Reims", league: "france", lat: 49.2467, lng: 4.025, color: "#d61016" },
+            { id: "ami", name: "Amiens SC", league: "france", lat: 49.8794, lng: 2.2639, color: "#d9d9d9" },
+            { id: "ann", name: "Annecy FC", league: "france", lat: 45.9136, lng: 6.1189, color: "#e30613" },
+            { id: "bas", name: "SC Bastia", league: "france", lat: 42.6592, lng: 9.4333, color: "#0057b8" },
+            { id: "cle", name: "Clermont Foot", league: "france", lat: 45.8161, lng: 3.1219, color: "#e30613" },
+            { id: "dkq", name: "USL Dunkerque", league: "france", lat: 51.0222, lng: 2.3989, color: "#0057b8" },
+            { id: "gre", name: "Grenoble Foot", league: "france", lat: 45.1953, lng: 5.7381, color: "#0057b8" },
+            { id: "gui", name: "EA Guingamp", league: "france", lat: 48.5667, lng: -3.1533, color: "#e30613" },
+            { id: "lav", name: "Stade Lavallois", league: "france", lat: 48.0728, lng: -0.7739, color: "#ff6600" },
+            { id: "lem", name: "Le Mans FC", league: "france", lat: 47.9722, lng: 0.2111, color: "#ffd700" },
+            { id: "mon", name: "Montpellier HSC", league: "france", lat: 43.6222, lng: 3.8119, color: "#0057b8" },
+            { id: "nca", name: "AS Nancy Lorraine", league: "france", lat: 48.6944, lng: 6.2108, color: "#e30613" },
+            { id: "pau", name: "Pau FC", league: "france", lat: 43.3056, lng: -0.3769, color: "#ffd700" },
+            { id: "red", name: "Red Star FC", league: "france", lat: 48.9206, lng: 2.3383, color: "#00a651" },
+            { id: "rod", name: "Rodez AF", league: "france", lat: 44.3569, lng: 2.5811, color: "#e30613" },
+            { id: "sae", name: "AS Saint-Étienne", league: "france", lat: 45.4608, lng: 4.3903, color: "#00a651" },
+            { id: "tro", name: "ESTAC Troyes", league: "france", lat: 48.3094, lng: 4.0903, color: "#0057b8" },
+            { id: "blg", name: "US Boulogne", league: "france", lat: 50.7183, lng: 1.6228, color: "#e30613" },
+            /* ---- BUNDESLIGA (18 clubs) ---- */
+            { id: "fcb_de", name: "Bayern Munich", league: "germany", lat: 48.2188, lng: 11.6247, color: "#dc052d" },
+            { id: "bvb", name: "Borussia Dortmund", league: "germany", lat: 51.4926, lng: 7.4519, color: "#fde100" },
+            { id: "b04", name: "Bayer Leverkusen", league: "germany", lat: 51.0383, lng: 7.0022, color: "#e32221" },
+            { id: "rbl", name: "RB Leipzig", league: "germany", lat: 51.3458, lng: 12.3489, color: "#dd0741" },
+            { id: "vfb", name: "VfB Stuttgart", league: "germany", lat: 48.7922, lng: 9.2322, color: "#e32219" },
+            { id: "sge", name: "Eintracht Frankfurt", league: "germany", lat: 50.0686, lng: 8.6456, color: "#e1000f" },
+            { id: "tsg", name: "TSG Hoffenheim", league: "germany", lat: 49.2381, lng: 8.8878, color: "#1c63b7" },
+            { id: "scf", name: "SC Freiburg", league: "germany", lat: 48.0211, lng: 7.8297, color: "#000000" },
+            { id: "fch", name: "1. FC Heidenheim", league: "germany", lat: 48.6686, lng: 10.1394, color: "#e2001a" },
+            { id: "svw", name: "Werder Bremen", league: "germany", lat: 53.0664, lng: 8.8375, color: "#1d9053" },
+            { id: "fcaa", name: "FC Augsburg", league: "germany", lat: 48.3231, lng: 10.8858, color: "#ba3733" },
+            { id: "wob", name: "VfL Wolfsburg", league: "germany", lat: 52.4328, lng: 10.8039, color: "#65b32e" },
+            { id: "m05", name: "Mainz 05", league: "germany", lat: 49.9842, lng: 8.2242, color: "#c3141e" },
+            { id: "bmg", name: "Borussia M'gladbach", league: "germany", lat: 51.1747, lng: 6.3856, color: "#000000" },
+            { id: "fcu", name: "Union Berlin", league: "germany", lat: 52.4572, lng: 13.5681, color: "#eb1923" },
+            { id: "stp", name: "FC St. Pauli", league: "germany", lat: 53.5544, lng: 9.9678, color: "#624839" },
+            { id: "hsv", name: "Hamburger SV", league: "germany", lat: 53.5872, lng: 9.8986, color: "#0057b8" },
+            { id: "koe", name: "1. FC Köln", league: "germany", lat: 50.9333, lng: 6.875, color: "#e30613" },
+            /* ---- 2. BUNDESLIGA (18 clubs) ---- */
+            { id: "vfl", name: "VfL Bochum", league: "germany", lat: 51.49, lng: 7.2367, color: "#005ca9" },
+            { id: "ksv", name: "Holstein Kiel", league: "germany", lat: 54.3492, lng: 10.1239, color: "#005ca9" },
+            { id: "heb", name: "Hertha BSC", league: "germany", lat: 52.5147, lng: 13.2395, color: "#004d9d" },
+            { id: "h96", name: "Hannover 96", league: "germany", lat: 52.36, lng: 9.7314, color: "#00a650" },
+            { id: "f95", name: "Fortuna Düsseldorf", league: "germany", lat: 51.2617, lng: 6.7331, color: "#e30613" },
+            { id: "fcnb", name: "1. FC Nürnberg", league: "germany", lat: 49.4261, lng: 11.1256, color: "#8b1a2b" },
+            { id: "ksc", name: "Karlsruher SC", league: "germany", lat: 49.0197, lng: 8.4128, color: "#0057b8" },
+            { id: "d98", name: "SV Darmstadt 98", league: "germany", lat: 49.8575, lng: 8.6725, color: "#0057b8" },
+            { id: "spb", name: "SC Paderborn", league: "germany", lat: 51.7311, lng: 8.7111, color: "#0057b8" },
+            { id: "sve", name: "SV Elversberg", league: "germany", lat: 49.3092, lng: 7.1136, color: "#111111" },
+            { id: "fck", name: "1. FC Kaiserslautern", league: "germany", lat: 49.4344, lng: 7.7764, color: "#e30613" },
+            { id: "fcm", name: "1. FC Magdeburg", league: "germany", lat: 52.1253, lng: 11.6711, color: "#0057b8" },
+            { id: "sgf", name: "Greuther Fürth", league: "germany", lat: 49.4869, lng: 10.9981, color: "#1d8a3a" },
+            { id: "ebs", name: "Eintracht Braunschweig", league: "germany", lat: 52.2892, lng: 10.5214, color: "#ffd700" },
+            { id: "pmu", name: "Preußen Münster", league: "germany", lat: 51.9289, lng: 7.6175, color: "#00a651" },
+            { id: "s04", name: "Schalke 04", league: "germany", lat: 51.5547, lng: 7.0678, color: "#0057b8" },
+            { id: "dsc", name: "Arminia Bielefeld", league: "germany", lat: 52.0319, lng: 8.5167, color: "#0057b8" },
+            { id: "sgd", name: "Dynamo Dresden", league: "germany", lat: 51.04, lng: 13.7481, color: "#ffd700" },
+            /* ---- 3. LIGA (20 clubs) ---- */
+            { id: "d3_saa", name: "1. FC Saarbrücken", league: "germany", lat: 49.2533, lng: 6.9978, color: "#0057b8" },
+            { id: "d3_sch", name: "1. FC Schweinfurt 05", league: "germany", lat: 50.0467, lng: 10.22, color: "#00a651" },
+            { id: "d3_aac", name: "Alemannia Aachen", league: "germany", lat: 50.7922, lng: 6.088, color: "#ffd700" },
+            { id: "d3_cot", name: "Energie Cottbus", league: "germany", lat: 51.7475, lng: 14.3378, color: "#e30613" },
+            { id: "d3_aue", name: "Erzgebirge Aue", league: "germany", lat: 50.5911, lng: 12.7022, color: "#6a1b9a" },
+            { id: "d3_ing", name: "FC Ingolstadt 04", league: "germany", lat: 48.7942, lng: 11.4072, color: "#e30613" },
+            { id: "d3_vik", name: "Viktoria Köln", league: "germany", lat: 50.93, lng: 7.07, color: "#e30613" },
+            { id: "d3_ros", name: "Hansa Rostock", league: "germany", lat: 54.0867, lng: 12.0918, color: "#0057b8" },
+            { id: "d3_reg", name: "Jahn Regensburg", league: "germany", lat: 49.0117, lng: 12.1081, color: "#e30613" },
+            { id: "d3_msv", name: "MSV Duisburg", league: "germany", lat: 51.4086, lng: 6.7793, color: "#0057b8" },
+            { id: "d3_ess", name: "Rot-Weiss Essen", league: "germany", lat: 51.4873, lng: 6.9886, color: "#e30613" },
+            { id: "d3_ver", name: "SC Verl", league: "germany", lat: 51.8778, lng: 8.5281, color: "#111111" },
+            { id: "d3_ulm", name: "SSV Ulm 1846", league: "germany", lat: 48.4139, lng: 9.9969, color: "#111111" },
+            { id: "d3_wal", name: "Waldhof Mannheim", league: "germany", lat: 49.4789, lng: 8.5036, color: "#0057b8" },
+            { id: "d3_tsg", name: "TSG Hoffenheim II", league: "germany", lat: 49.2394, lng: 8.8885, color: "#0057b8" },
+            { id: "d3_1860", name: "TSV 1860 München", league: "germany", lat: 48.11, lng: 11.5749, color: "#0057b8" },
+            { id: "d3_hav", name: "TSV Havelse", league: "germany", lat: 52.4222, lng: 9.6, color: "#e30613" },
+            { id: "d3_vfb", name: "VfB Stuttgart II", league: "germany", lat: 48.7625, lng: 9.2025, color: "#e30613" },
+            { id: "d3_osn", name: "VfL Osnabrück", league: "germany", lat: 52.2833, lng: 8.0581, color: "#6a1b9a" },
+            { id: "d3_weh", name: "SV Wehen Wiesbaden", league: "germany", lat: 50.0833, lng: 8.22, color: "#e30613" },
+            /* ---- INDIAN SUPER LEAGUE (14 clubs) ---- */
+            { id: "in_mbg", name: "Mohun Bagan Super Giant", league: "world", lat: 22.5686, lng: 88.4097, color: "#00a651" },
+            { id: "in_blr", name: "Bengaluru FC", league: "world", lat: 12.9697, lng: 77.5934, color: "#0057b8" },
+            { id: "in_che", name: "Chennaiyin FC", league: "world", lat: 13.0814, lng: 80.2744, color: "#0057b8" },
+            { id: "in_eb", name: "East Bengal", league: "world", lat: 22.57, lng: 88.41, color: "#e30613" },
+            { id: "in_goa", name: "FC Goa", league: "world", lat: 15.2847, lng: 73.9511, color: "#ff6600" },
+            { id: "in_scd", name: "Sporting Club Delhi", league: "world", lat: 28.5828, lng: 77.2335, color: "#0057b8" },
+            { id: "in_jam", name: "Jamshedpur FC", league: "world", lat: 22.8042, lng: 86.1971, color: "#e30613" },
+            { id: "in_ker", name: "Kerala Blasters", league: "world", lat: 9.9964, lng: 76.3017, color: "#ffd700" },
+            { id: "in_moh", name: "Mohammedan SC", league: "world", lat: 22.5745, lng: 88.396, color: "#111111" },
+            { id: "in_mum", name: "Mumbai City FC", league: "world", lat: 19.1186, lng: 72.8353, color: "#5bc2e7" },
+            { id: "in_neu", name: "NorthEast United", league: "world", lat: 26.1445, lng: 91.7362, color: "#e30613" },
+            { id: "in_odi", name: "Odisha FC", league: "world", lat: 20.2943, lng: 85.8239, color: "#6a1b9a" },
+            { id: "in_pun", name: "Punjab FC", league: "world", lat: 30.901, lng: 75.8573, color: "#e30613" },
+            { id: "in_kas", name: "Inter Kashi", league: "world", lat: 25.3176, lng: 82.9739, color: "#e30613" },
+            /* ---- SERIE A (20 clubs) ---- */
+            { id: "int", name: "Inter", league: "italy", lat: 45.4781, lng: 9.124, color: "#0068a8" },
+            { id: "mil", name: "AC Milan", league: "italy", lat: 45.4781, lng: 9.124, color: "#fb090b" },
+            { id: "juv", name: "Juventus", league: "italy", lat: 45.1096, lng: 7.6412, color: "#1c1c1c" },
+            { id: "nap", name: "Napoli", league: "italy", lat: 40.8279, lng: 14.1931, color: "#12a0d7" },
+            { id: "rom", name: "Roma", league: "italy", lat: 41.9341, lng: 12.4547, color: "#8e1f2f" },
+            { id: "laz", name: "Lazio", league: "italy", lat: 41.9341, lng: 12.4547, color: "#87d8f7" },
+            { id: "ata", name: "Atalanta", league: "italy", lat: 45.7089, lng: 9.6808, color: "#1e71b8" },
+            { id: "fio", name: "Fiorentina", league: "italy", lat: 43.7807, lng: 11.2825, color: "#5b2c83" },
+            { id: "bol", name: "Bologna", league: "italy", lat: 44.4922, lng: 11.3099, color: "#1a2f5a" },
+            { id: "tor", name: "Torino", league: "italy", lat: 45.0417, lng: 7.65, color: "#8a1538" },
+            { id: "gen", name: "Genoa", league: "italy", lat: 44.4163, lng: 8.9524, color: "#c0392b" },
+            { id: "udi", name: "Udinese", league: "italy", lat: 46.0816, lng: 13.2, color: "#6b6b6b" },
+            { id: "cag", name: "Cagliari", league: "italy", lat: 39.1996, lng: 9.1378, color: "#a61e3a" },
+            { id: "lec", name: "Lecce", league: "italy", lat: 40.3652, lng: 18.2087, color: "#e8c200" },
+            { id: "ver", name: "Hellas Verona", league: "italy", lat: 45.4352, lng: 10.9686, color: "#1d3c8f" },
+            { id: "par", name: "Parma", league: "italy", lat: 44.795, lng: 10.3383, color: "#f2c200" },
+            { id: "com", name: "Como", league: "italy", lat: 45.8133, lng: 9.0786, color: "#2a5aa5" },
+            { id: "sas", name: "Sassuolo", league: "italy", lat: 44.7141, lng: 10.6497, color: "#00a651" },
+            { id: "cre", name: "Cremonese", league: "italy", lat: 45.1397, lng: 10.0239, color: "#b5a58a" },
+            { id: "pis", name: "Pisa", league: "italy", lat: 43.7089, lng: 10.3994, color: "#2b3a67" },
+            /* ---- SERIE B (20 clubs) ---- */
+            { id: "avi", name: "Avellino", league: "italy", lat: 40.9167, lng: 14.7881, color: "#00a651" },
+            { id: "bar", name: "Bari", league: "italy", lat: 41.0839, lng: 16.8403, color: "#e30613" },
+            { id: "crr", name: "Carrarese", league: "italy", lat: 44.0562, lng: 10.0922, color: "#ffd700" },
+            { id: "cat", name: "Catanzaro", league: "italy", lat: 38.9019, lng: 16.59, color: "#e30613" },
+            { id: "ces", name: "Cesena", league: "italy", lat: 44.1489, lng: 12.2619, color: "#111111" },
+            { id: "emp", name: "Empoli", league: "italy", lat: 43.7261, lng: 10.9531, color: "#0057b8" },
+            { id: "fro", name: "Frosinone", league: "italy", lat: 41.63, lng: 13.33, color: "#ffd700" },
+            { id: "jst", name: "Juve Stabia", league: "italy", lat: 40.6992, lng: 14.4883, color: "#ffd700" },
+            { id: "mnt", name: "Mantova", league: "italy", lat: 45.1558, lng: 10.7939, color: "#e30613" },
+            { id: "mod", name: "Modena", league: "italy", lat: 44.6294, lng: 10.9439, color: "#ffd700" },
+            { id: "mnz", name: "Monza", league: "italy", lat: 45.5833, lng: 9.3047, color: "#e30613" },
+            { id: "pad", name: "Padova", league: "italy", lat: 45.4083, lng: 11.8514, color: "#e30613" },
+            { id: "pal", name: "Palermo", league: "italy", lat: 38.1522, lng: 13.3433, color: "#f4a6c1" },
+            { id: "pes", name: "Pescara", league: "italy", lat: 42.4361, lng: 14.1931, color: "#00a0e3" },
+            { id: "reg", name: "Reggiana", league: "italy", lat: 44.7144, lng: 10.6511, color: "#8b1a2b" },
+            { id: "smp", name: "Sampdoria", league: "italy", lat: 44.4164, lng: 8.9525, color: "#0057b8" },
+            { id: "spz", name: "Spezia", league: "italy", lat: 44.1031, lng: 9.8231, color: "#111111" },
+            { id: "ven", name: "Venezia", league: "italy", lat: 45.4286, lng: 12.3578, color: "#ff6600" },
+            { id: "ent", name: "Virtus Entella", league: "italy", lat: 44.3167, lng: 9.3256, color: "#00a0e3" },
+            { id: "sud", name: "Südtirol", league: "italy", lat: 46.4981, lng: 11.3436, color: "#e30613" },
+            /* ---- EREDIVISIE (18 clubs) ---- */
+            { id: "ajx", name: "Ajax", league: "eredivisie", lat: 52.3144, lng: 4.9419, color: "#d2122e" },
+            { id: "psv", name: "PSV Eindhoven", league: "eredivisie", lat: 51.4417, lng: 5.4675, color: "#f00000" },
+            { id: "fey", name: "Feyenoord", league: "eredivisie", lat: 51.8939, lng: 4.5231, color: "#e30613" },
+            { id: "az", name: "AZ Alkmaar", league: "eredivisie", lat: 52.6125, lng: 4.7417, color: "#db002c" },
+            { id: "twe", name: "FC Twente", league: "eredivisie", lat: 52.2367, lng: 6.8375, color: "#e30613" },
+            { id: "utr", name: "FC Utrecht", league: "eredivisie", lat: 52.0783, lng: 5.1458, color: "#e30613" },
+            { id: "hee", name: "SC Heerenveen", league: "eredivisie", lat: 52.9592, lng: 5.9361, color: "#0055a5" },
+            { id: "gro", name: "FC Groningen", league: "eredivisie", lat: 53.2061, lng: 6.5917, color: "#008751" },
+            { id: "spa", name: "Sparta Rotterdam", league: "eredivisie", lat: 51.9194, lng: 4.4336, color: "#e30613" },
+            { id: "nec", name: "NEC Nijmegen", league: "eredivisie", lat: 51.8225, lng: 5.8369, color: "#007a33" },
+            { id: "gae", name: "Go Ahead Eagles", league: "eredivisie", lat: 52.2603, lng: 6.1608, color: "#e30613" },
+            { id: "fos", name: "Fortuna Sittard", league: "eredivisie", lat: 50.9936, lng: 5.8419, color: "#fcd116" },
+            { id: "pec", name: "PEC Zwolle", league: "eredivisie", lat: 52.5172, lng: 6.1175, color: "#1e90ff" },
+            { id: "her", name: "Heracles Almelo", league: "eredivisie", lat: 52.3394, lng: 6.6639, color: "#1a1a1a" },
+            { id: "nac", name: "NAC Breda", league: "eredivisie", lat: 51.5922, lng: 4.7525, color: "#ffd700" },
+            { id: "tel", name: "Telstar", league: "eredivisie", lat: 52.4647, lng: 4.6297, color: "#d9d9d9" },
+            { id: "exc", name: "Excelsior", league: "eredivisie", lat: 51.9239, lng: 4.5264, color: "#e30613" },
+            { id: "vol", name: "FC Volendam", league: "eredivisie", lat: 52.4969, lng: 5.0719, color: "#ff6600" },
+            /* ---- ELITESERIEN (19 clubs) ---- */
+            { id: "bod", name: "Bodø/Glimt", league: "europe_other", lat: 67.2889, lng: 14.4294, color: "#ffd700" },
+            { id: "brs", name: "SK Brann", league: "europe_other", lat: 60.3667, lng: 5.3556, color: "#e30613" },
+            { id: "vik", name: "Viking FK", league: "europe_other", lat: 58.915, lng: 5.7119, color: "#0057b8" },
+            { id: "ros", name: "Rosenborg BK", league: "europe_other", lat: 63.4125, lng: 10.4017, color: "#d9d9d9" },
+            { id: "mld", name: "Molde FK", league: "europe_other", lat: 62.7389, lng: 7.1306, color: "#0057b8" },
+            { id: "tik", name: "Tromsø IL", league: "europe_other", lat: 69.6531, lng: 18.9617, color: "#e30613" },
+            { id: "sar", name: "Sarpsborg 08", league: "europe_other", lat: 59.2825, lng: 11.1156, color: "#e30613" },
+            { id: "fre", name: "Fredrikstad FK", league: "europe_other", lat: 59.2183, lng: 10.9422, color: "#d9d9d9" },
+            { id: "vif", name: "Vålerenga IF", league: "europe_other", lat: 59.9136, lng: 10.7922, color: "#0057b8" },
+            { id: "kfu", name: "KFUM Oslo", league: "europe_other", lat: 59.925, lng: 10.73, color: "#e30613" },
+            { id: "sfo", name: "Sandefjord Fotball", league: "europe_other", lat: 59.1314, lng: 10.2158, color: "#0057b8" },
+            { id: "kbk", name: "Kristiansund BK", league: "europe_other", lat: 63.11, lng: 7.7289, color: "#0057b8" },
+            { id: "fkh", name: "FK Haugesund", league: "europe_other", lat: 59.4156, lng: 5.27, color: "#0057b8" },
+            { id: "hkm", name: "HamKam", league: "europe_other", lat: 60.7933, lng: 11.0689, color: "#e30613" },
+            { id: "sgo", name: "Strømsgodset", league: "europe_other", lat: 59.7422, lng: 10.2078, color: "#0057b8" },
+            { id: "bry", name: "Bryne FK", league: "europe_other", lat: 58.737, lng: 5.649, color: "#e30613" },
+            { id: "no_lil", name: "Lillestrøm SK", league: "europe_other", lat: 59.9568, lng: 11.076, color: "#ffd400" },
+            { id: "no_sta", name: "IK Start", league: "europe_other", lat: 58.1215, lng: 8.0568, color: "#ffd400" },
+            { id: "no_aal", name: "Aalesunds FK", league: "europe_other", lat: 62.47, lng: 6.175, color: "#ff7a00" },
+            /* ---- EKSTRAKLASA (18 clubs) ---- */
+            { id: "lgw", name: "Legia Warszawa", league: "europe_other", lat: 52.2403, lng: 21.0306, color: "#00a651" },
+            { id: "lpz", name: "Lech Poznań", league: "europe_other", lat: 52.4094, lng: 16.9264, color: "#0057b8" },
+            { id: "rkc", name: "Raków Częstochowa", league: "europe_other", lat: 50.8037, lng: 19.1214, color: "#e30613" },
+            { id: "jag", name: "Jagiellonia Białystok", league: "europe_other", lat: 53.1289, lng: 23.1583, color: "#ffd700" },
+            { id: "pgs", name: "Pogoń Szczecin", league: "europe_other", lat: 53.43, lng: 14.535, color: "#0a2a5e" },
+            { id: "crk", name: "Cracovia", league: "europe_other", lat: 50.0629, lng: 19.91, color: "#e30613" },
+            { id: "gor", name: "Górnik Zabrze", league: "europe_other", lat: 50.2922, lng: 18.7667, color: "#0057b8" },
+            { id: "mtr", name: "Motor Lublin", league: "europe_other", lat: 51.2325, lng: 22.574, color: "#ffd700" },
+            { id: "kkl", name: "Korona Kielce", league: "europe_other", lat: 50.87, lng: 20.635, color: "#ffd700" },
+            { id: "pgl", name: "Piast Gliwice", league: "europe_other", lat: 50.2906, lng: 18.6828, color: "#0057b8" },
+            { id: "rdm", name: "Radomiak Radom", league: "europe_other", lat: 51.3969, lng: 21.1458, color: "#00a651" },
+            { id: "zlu", name: "Zagłębie Lubin", league: "europe_other", lat: 51.4006, lng: 16.2175, color: "#e30613" },
+            { id: "wid", name: "Widzew Łódź", league: "europe_other", lat: 51.7469, lng: 19.5181, color: "#e30613" },
+            { id: "lgd", name: "Lechia Gdańsk", league: "europe_other", lat: 54.3917, lng: 18.6389, color: "#00a651" },
+            { id: "wpl", name: "Wisła Płock", league: "europe_other", lat: 52.5461, lng: 19.7194, color: "#0057b8" },
+            { id: "ark", name: "Arka Gdynia", league: "europe_other", lat: 54.4989, lng: 18.5278, color: "#0057b8" },
+            { id: "bbt", name: "Bruk-Bet Termalica", league: "europe_other", lat: 50.0887, lng: 20.9983, color: "#ff6600" },
+            { id: "gks", name: "GKS Katowice", league: "europe_other", lat: 50.2586, lng: 19.0328, color: "#ffd700" },
+            /* ---- LIGA PORTUGAL (18 clubs) ---- */
+            { id: "scp", name: "Sporting CP", league: "portugal", lat: 38.7611, lng: -9.1608, color: "#008057" },
+            { id: "slb", name: "SL Benfica", league: "portugal", lat: 38.7528, lng: -9.1847, color: "#e83030" },
+            { id: "fcp", name: "FC Porto", league: "portugal", lat: 41.1617, lng: -8.5839, color: "#00428c" },
+            { id: "bra", name: "SC Braga", league: "portugal", lat: 41.5617, lng: -8.4308, color: "#d4001c" },
+            { id: "vsc", name: "Vitória SC", league: "portugal", lat: 41.4461, lng: -8.3003, color: "#111111" },
+            { id: "fam", name: "FC Famalicão", league: "portugal", lat: 41.4072, lng: -8.5258, color: "#003b8e" },
+            { id: "est", name: "Estoril Praia", league: "portugal", lat: 38.7089, lng: -9.3982, color: "#ffd700" },
+            { id: "mor", name: "Moreirense", league: "portugal", lat: 41.3607, lng: -8.3515, color: "#00a651" },
+            { id: "giv", name: "Gil Vicente", league: "portugal", lat: 41.5372, lng: -8.6258, color: "#e30613" },
+            { id: "aro", name: "FC Arouca", league: "portugal", lat: 40.9295, lng: -8.2506, color: "#ffd700" },
+            { id: "rio", name: "Rio Ave", league: "portugal", lat: 41.3547, lng: -8.7403, color: "#00a651" },
+            { id: "scl", name: "Santa Clara", league: "portugal", lat: 37.7442, lng: -25.6683, color: "#e30613" },
+            { id: "cpi", name: "Casa Pia", league: "portugal", lat: 38.705, lng: -9.203, color: "#1a1a1a" },
+            { id: "cdn", name: "CD Nacional", league: "portugal", lat: 32.6717, lng: -16.875, color: "#1a1a1a" },
+            { id: "ema", name: "Estrela da Amadora", league: "portugal", lat: 38.7556, lng: -9.2181, color: "#e30613" },
+            { id: "alv", name: "FC Alverca", league: "portugal", lat: 38.8961, lng: -9.0392, color: "#e30613" },
+            { id: "ton", name: "CD Tondela", league: "portugal", lat: 40.5133, lng: -8.0814, color: "#00a651" },
+            { id: "avs", name: "AVS Futebol SAD", league: "portugal", lat: 41.4153, lng: -8.4093, color: "#c8102e" },
+            /* ---- SSE AIRTRICITY PREMIER DIVISION (11 clubs) ---- */
+            { id: "ie_boh", name: "Bohemians", league: "europe_other", lat: 53.3597, lng: -6.2711, color: "#e30613" },
+            { id: "ie_cor", name: "Cork City", league: "europe_other", lat: 51.8856, lng: -8.4725, color: "#00a651" },
+            { id: "ie_der", name: "Derry City", league: "europe_other", lat: 54.997, lng: -7.3283, color: "#e30613" },
+            { id: "ie_dro", name: "Drogheda United", league: "europe_other", lat: 53.7128, lng: -6.347, color: "#0057b8" },
+            { id: "ie_gal", name: "Galway United", league: "europe_other", lat: 53.2753, lng: -9.0514, color: "#8b1a2b" },
+            { id: "ie_sha", name: "Shamrock Rovers", league: "europe_other", lat: 53.2925, lng: -6.3575, color: "#00a651" },
+            { id: "ie_sli", name: "Sligo Rovers", league: "europe_other", lat: 54.2706, lng: -8.4731, color: "#e30613" },
+            { id: "ie_shl", name: "Shelbourne", league: "europe_other", lat: 53.3758, lng: -6.2433, color: "#e30613" },
+            { id: "ie_stp", name: "St Patrick’s Athletic", league: "europe_other", lat: 53.3367, lng: -6.3081, color: "#e30613" },
+            { id: "ie_wat", name: "Waterford FC", league: "europe_other", lat: 52.245, lng: -7.123, color: "#0057b8" },
+            { id: "ie_dun", name: "Dundalk FC", league: "europe_other", lat: 54.0072, lng: -6.405, color: "#111111" },
+            /* ---- K LEAGUE 1 (14 clubs) ---- */
+            { id: "kr_dae", name: "Daegu FC", league: "world", lat: 35.8286, lng: 128.6819, color: "#00a0e3" },
+            { id: "kr_djn", name: "Daejeon Hana Citizen", league: "world", lat: 36.3017, lng: 127.3144, color: "#6a1b9a" },
+            { id: "kr_any", name: "FC Anyang", league: "world", lat: 37.4049, lng: 126.9368, color: "#6a1b9a" },
+            { id: "kr_seo", name: "FC Seoul", league: "world", lat: 37.5683, lng: 126.8972, color: "#e30613" },
+            { id: "kr_gan", name: "Gangwon FC", league: "world", lat: 37.87, lng: 127.73, color: "#ff6600" },
+            { id: "kr_gim", name: "Gimcheon Sangmu", league: "world", lat: 36.125, lng: 128.11, color: "#e30613" },
+            { id: "kr_gwa", name: "Gwangju FC", league: "world", lat: 35.18, lng: 126.88, color: "#ffd700" },
+            { id: "kr_jeo", name: "Jeonbuk Hyundai Motors", league: "world", lat: 35.8667, lng: 127.0644, color: "#00a651" },
+            { id: "kr_jej", name: "Jeju SK", league: "world", lat: 33.2467, lng: 126.5122, color: "#ff6600" },
+            { id: "kr_poh", name: "Pohang Steelers", league: "world", lat: 36.0109, lng: 129.3614, color: "#e30613" },
+            { id: "kr_suw", name: "Suwon FC", league: "world", lat: 37.295, lng: 127.01, color: "#0057b8" },
+            { id: "kr_uls", name: "Ulsan HD", league: "world", lat: 35.5361, lng: 129.2597, color: "#0057b8" },
+            { id: "kr_inc", name: "Incheon United", league: "world", lat: 37.4676, lng: 126.6444, color: "#1e3a8a" },
+            { id: "kr_buc", name: "Bucheon FC 1995", league: "world", lat: 37.5034, lng: 126.766, color: "#8b1a2b" },
+            /* ---- REST OF WORLD (19 clubs) ---- */
+            { id: "oly", name: "Olympiacos", league: "europe_other", lat: 37.9466, lng: 23.6644, color: "#dc2626" },
+            { id: "rw_aek", name: "AEK Athens", league: "europe_other", lat: 38.0386, lng: 23.7494, color: "#ffd700" },
+            { id: "rw_ain", name: "Al Ain FC", league: "world", lat: 24.215, lng: 55.75, color: "#6a1b9a" },
+            { id: "rw_apo", name: "APOEL FC", league: "europe_other", lat: 35.1392, lng: 33.3637, color: "#ffd700" },
+            { id: "rw_nac", name: "Atlético Nacional", league: "world", lat: 6.2564, lng: -75.5906, color: "#00a651" },
+            { id: "rw_bah", name: "Bahia", league: "world", lat: -12.9783, lng: -38.5042, color: "#0057b8" },
+            { id: "rw_bur", name: "Buriram United", league: "world", lat: 14.9689, lng: 103.0792, color: "#0057b8" },
+            { id: "rw_diz", name: "Dinamo Zagreb", league: "europe_other", lat: 45.8189, lng: 16.0183, color: "#0057b8" },
+            { id: "rw_dky", name: "Dynamo Kyiv", league: "europe_other", lat: 50.435, lng: 30.5367, color: "#0057b8" },
+            { id: "rw_fer", name: "Ferencváros", league: "europe_other", lat: 47.4861, lng: 19.0933, color: "#00a651" },
+            { id: "rw_haj", name: "Hajduk Split", league: "europe_other", lat: 43.5111, lng: 16.4439, color: "#0057b8" },
+            { id: "rw_hjk", name: "HJK Helsinki", league: "europe_other", lat: 60.1883, lng: 24.9225, color: "#0057b8" },
+            { id: "rw_pan", name: "Panathinaikos", league: "europe_other", lat: 37.9892, lng: 23.7544, color: "#00a651" },
+            { id: "rw_pao", name: "PAOK", league: "europe_other", lat: 40.6127, lng: 22.9704, color: "#111111" },
+            { id: "rw_qar", name: "Qarabağ FK", league: "europe_other", lat: 40.398, lng: 49.883, color: "#111111" },
+            { id: "rw_sha", name: "Shakhtar Donetsk", league: "europe_other", lat: 48.0233, lng: 37.7681, color: "#ff6600" },
+            { id: "rw_sla", name: "Slavia Praha", league: "europe_other", lat: 50.0678, lng: 14.4939, color: "#e30613" },
+            { id: "rw_spa", name: "Sparta Praha", league: "europe_other", lat: 50.0994, lng: 14.4167, color: "#8b1a2b" },
+            { id: "rw_plz", name: "Viktoria Plzeň", league: "europe_other", lat: 49.7421, lng: 13.3704, color: "#0057b8" },
+            /* ---- SUPERLIGA (ROEMENIË) (16 clubs) ---- */
+            { id: "ro_arg", name: "FC Argeș Pitești", league: "europe_other", lat: 44.8619, lng: 24.8683, color: "#6a1b9a" },
+            { id: "ro_bot", name: "FC Botoșani", league: "europe_other", lat: 47.7505, lng: 26.6642, color: "#0057b8" },
+            { id: "ro_csi", name: "Csíkszereda Miercurea Ciuc", league: "europe_other", lat: 46.359, lng: 25.801, color: "#e30613" },
+            { id: "ro_cfr", name: "CFR Cluj", league: "europe_other", lat: 46.7618, lng: 23.5686, color: "#8b1a2b" },
+            { id: "ro_din", name: "Dinamo București", league: "europe_other", lat: 44.4515, lng: 26.1205, color: "#e30613" },
+            { id: "ro_far", name: "Farul Constanța", league: "europe_other", lat: 44.195, lng: 28.625, color: "#0057b8" },
+            { id: "ro_fcs", name: "FCSB", league: "europe_other", lat: 44.4372, lng: 26.1528, color: "#0057b8" },
+            { id: "ro_her", name: "Hermannstadt", league: "europe_other", lat: 45.7792, lng: 24.1294, color: "#e30613" },
+            { id: "ro_met", name: "Metaloglobus București", league: "europe_other", lat: 44.426, lng: 26.06, color: "#e30613" },
+            { id: "ro_ote", name: "Oțelul Galați", league: "europe_other", lat: 45.437, lng: 28.01, color: "#0057b8" },
+            { id: "ro_pet", name: "Petrolul Ploiești", league: "europe_other", lat: 44.939, lng: 26.024, color: "#ffd700" },
+            { id: "ro_rap", name: "Rapid București", league: "europe_other", lat: 44.4631, lng: 26.0559, color: "#8b1a2b" },
+            { id: "ro_slo", name: "Unirea Slobozia", league: "europe_other", lat: 44.56, lng: 27.365, color: "#e30613" },
+            { id: "ro_ucj", name: "Universitatea Cluj", league: "europe_other", lat: 46.7686, lng: 23.5703, color: "#111111" },
+            { id: "ro_ucr", name: "Universitatea Craiova", league: "europe_other", lat: 44.305, lng: 23.81, color: "#0057b8" },
+            { id: "ro_uta", name: "UTA Arad", league: "europe_other", lat: 46.1852, lng: 21.3279, color: "#e30613" },
+            /* ---- SAUDI PRO LEAGUE (18 clubs) ---- */
+            { id: "hil", name: "Al Hilal", league: "world", lat: 24.7294, lng: 46.6236, color: "#0054a6" },
+            { id: "nas", name: "Al Nassr", league: "world", lat: 24.64, lng: 46.7239, color: "#fedd00" },
+            { id: "ait", name: "Al-Ittihad", league: "world", lat: 21.7961, lng: 39.1494, color: "#ffd700" },
+            { id: "aah", name: "Al-Ahli", league: "world", lat: 21.7961, lng: 39.1494, color: "#00a651" },
+            { id: "aqa", name: "Al-Qadsiah", league: "world", lat: 26.3003, lng: 50.185, color: "#f5a800" },
+            { id: "ash", name: "Al-Shabab", league: "world", lat: 24.77, lng: 46.7, color: "#d9d9d9" },
+            { id: "aet", name: "Al-Ettifaq", league: "world", lat: 26.4383, lng: 50.1127, color: "#00a651" },
+            { id: "atw", name: "Al-Taawoun", league: "world", lat: 26.38, lng: 43.98, color: "#e30613" },
+            { id: "afa", name: "Al-Fateh", league: "world", lat: 25.375, lng: 49.6, color: "#00a651" },
+            { id: "afy", name: "Al-Fayha", league: "world", lat: 25.87, lng: 45.35, color: "#ffd700" },
+            { id: "akh", name: "Al-Khaleej", league: "world", lat: 26.48, lng: 50.04, color: "#e30613" },
+            { id: "aok", name: "Al-Okhdood", league: "world", lat: 17.4917, lng: 44.1322, color: "#00a651" },
+            { id: "ari", name: "Al-Riyadh", league: "world", lat: 24.72, lng: 46.7, color: "#ffd700" },
+            { id: "dmc", name: "Damac", league: "world", lat: 18.3, lng: 42.73, color: "#8b1a2b" },
+            { id: "neo", name: "NEOM SC", league: "world", lat: 28.395, lng: 36.57, color: "#00a0e3" },
+            { id: "akl", name: "Al-Kholood", league: "world", lat: 25.86, lng: 43.5, color: "#e30613" },
+            { id: "anj", name: "Al-Najma", league: "world", lat: 26.09, lng: 43.99, color: "#0057b8" },
+            { id: "ahz", name: "Al-Hazem", league: "world", lat: 25.87, lng: 43.52, color: "#e30613" },
+            /* ---- SCOTTISH PREMIERSHIP (12 clubs) ---- */
+            { id: "cel_sc", name: "Celtic", league: "uk", lat: 55.8497, lng: -4.2056, color: "#018749" },
+            { id: "ran", name: "Rangers", league: "uk", lat: 55.8531, lng: -4.3092, color: "#1b458f" },
+            { id: "hom", name: "Heart of Midlothian", league: "uk", lat: 55.939, lng: -3.2323, color: "#8b1a2b" },
+            { id: "hib", name: "Hibernian", league: "uk", lat: 55.9617, lng: -3.1656, color: "#00a651" },
+            { id: "abe", name: "Aberdeen", league: "uk", lat: 57.1594, lng: -2.0883, color: "#e30613" },
+            { id: "dun", name: "Dundee United", league: "uk", lat: 56.475, lng: -2.9667, color: "#f58220" },
+            { id: "dnd", name: "Dundee FC", league: "uk", lat: 56.4742, lng: -2.9731, color: "#1e3a8a" },
+            { id: "kil", name: "Kilmarnock", league: "uk", lat: 55.6053, lng: -4.5086, color: "#0057b8" },
+            { id: "mot", name: "Motherwell", league: "uk", lat: 55.7792, lng: -3.9806, color: "#f5a800" },
+            { id: "stm", name: "St Mirren", league: "uk", lat: 55.8506, lng: -4.4269, color: "#1a1a1a" },
+            { id: "fal", name: "Falkirk", league: "uk", lat: 56.0033, lng: -3.8208, color: "#1e3a8a" },
+            { id: "lvn", name: "Livingston", league: "uk", lat: 55.8875, lng: -3.5222, color: "#ffd700" },
+            /* ---- LA LIGA (20 clubs) ---- */
+            { id: "rma", name: "Real Madrid", league: "spain", lat: 40.4531, lng: -3.6883, color: "#e6e6e6" },
+            { id: "fcb", name: "Barcelona", league: "spain", lat: 41.3809, lng: 2.1228, color: "#a50044" },
+            { id: "atm", name: "Atletico Madrid", league: "spain", lat: 40.4362, lng: -3.5995, color: "#cb3524" },
+            { id: "sev", name: "Sevilla", league: "spain", lat: 37.384, lng: -5.9706, color: "#f43333" },
+            { id: "bet", name: "Real Betis", league: "spain", lat: 37.3567, lng: -5.9817, color: "#00954c" },
+            { id: "val", name: "Valencia", league: "spain", lat: 39.4747, lng: -0.3583, color: "#f58220" },
+            { id: "vil", name: "Villarreal", league: "spain", lat: 39.9441, lng: -0.1036, color: "#fbe122" },
+            { id: "ath", name: "Athletic Club", league: "spain", lat: 43.2641, lng: -2.9494, color: "#b3001b" },
+            { id: "rso", name: "Real Sociedad", league: "spain", lat: 43.3014, lng: -1.9737, color: "#0067b1" },
+            { id: "cel", name: "Celta Vigo", league: "spain", lat: 42.2118, lng: -8.7397, color: "#8ac3ee" },
+            { id: "get", name: "Getafe", league: "spain", lat: 40.3256, lng: -3.7147, color: "#005999" },
+            { id: "osa", name: "Osasuna", league: "spain", lat: 42.7967, lng: -1.6369, color: "#d91a21" },
+            { id: "gir", name: "Girona", league: "spain", lat: 41.9609, lng: 2.8283, color: "#ef4136" },
+            { id: "ray", name: "Rayo Vallecano", league: "spain", lat: 40.3919, lng: -3.6587, color: "#d6d6d6" },
+            { id: "esp", name: "Espanyol", league: "spain", lat: 41.3478, lng: 2.0757, color: "#007fc8" },
+            { id: "mal", name: "Mallorca", league: "spain", lat: 39.5901, lng: 2.6304, color: "#a6192e" },
+            { id: "ala", name: "Alaves", league: "spain", lat: 42.8372, lng: -2.6876, color: "#0761af" },
+            { id: "lev", name: "Levante", league: "spain", lat: 39.4944, lng: -0.3644, color: "#b91c3f" },
+            { id: "elc", name: "Elche", league: "spain", lat: 38.267, lng: -0.6627, color: "#009a44" },
+            { id: "ovi", name: "Real Oviedo", league: "spain", lat: 43.3649, lng: -5.8672, color: "#1a5bb0" },
+            /* ---- LALIGA 2 (22 clubs) ---- */
+            { id: "alb", name: "Albacete", league: "spain", lat: 38.9972, lng: -1.8553, color: "#d9d9d9" },
+            { id: "alm", name: "UD Almería", league: "spain", lat: 36.8403, lng: -2.435, color: "#e30613" },
+            { id: "bcf", name: "Burgos CF", league: "spain", lat: 42.3478, lng: -3.6842, color: "#d9d9d9" },
+            { id: "cad", name: "Cádiz", league: "spain", lat: 36.5025, lng: -6.2728, color: "#ffd700" },
+            { id: "cas", name: "CD Castellón", league: "spain", lat: 39.9947, lng: -0.0381, color: "#111111" },
+            { id: "ceu", name: "AD Ceuta", league: "spain", lat: 35.8889, lng: -5.32, color: "#d9d9d9" },
+            { id: "cor", name: "Córdoba", league: "spain", lat: 37.8667, lng: -4.7783, color: "#00a651" },
+            { id: "dep", name: "Deportivo La Coruña", league: "spain", lat: 43.3686, lng: -8.4178, color: "#0057b8" },
+            { id: "eib", name: "SD Eibar", league: "spain", lat: 43.1819, lng: -2.4753, color: "#1e3a8a" },
+            { id: "gra", name: "Granada", league: "spain", lat: 37.1531, lng: -3.5958, color: "#e30613" },
+            { id: "hue", name: "SD Huesca", league: "spain", lat: 42.1322, lng: -0.4247, color: "#1e3a8a" },
+            { id: "lpa", name: "UD Las Palmas", league: "spain", lat: 28.1003, lng: -15.4569, color: "#ffd700" },
+            { id: "leg", name: "CD Leganés", league: "spain", lat: 40.34, lng: -3.76, color: "#0057b8" },
+            { id: "mlg", name: "Málaga", league: "spain", lat: 36.7342, lng: -4.4261, color: "#0057b8" },
+            { id: "mir", name: "CD Mirandés", league: "spain", lat: 42.6833, lng: -2.9406, color: "#e30613" },
+            { id: "rac", name: "Racing Santander", league: "spain", lat: 43.475, lng: -3.7931, color: "#00a651" },
+            { id: "rsb", name: "Real Sociedad B", league: "spain", lat: 43.265, lng: -1.96, color: "#0057b8" },
+            { id: "rva", name: "Real Valladolid", league: "spain", lat: 41.6444, lng: -4.7611, color: "#5b2c83" },
+            { id: "spg", name: "Sporting Gijón", league: "spain", lat: 43.5361, lng: -5.6375, color: "#e30613" },
+            { id: "zar", name: "Real Zaragoza", league: "spain", lat: 41.6364, lng: -0.9019, color: "#0057b8" },
+            { id: "and_ad", name: "FC Andorra", league: "spain", lat: 42.5066, lng: 1.51, color: "#1a4aa0" },
+            { id: "cul", name: "Cultural Leonesa", league: "spain", lat: 42.5878, lng: -5.5731, color: "#e30613" },
+            /* ---- ALLSVENSKAN (19 clubs) ---- */
+            { id: "mff", name: "Malmö FF", league: "europe_other", lat: 55.5833, lng: 13.0, color: "#7fc4e8" },
+            { id: "aik", name: "AIK", league: "europe_other", lat: 59.3719, lng: 18.0006, color: "#111111" },
+            { id: "dif", name: "Djurgårdens IF", league: "europe_other", lat: 59.2928, lng: 18.0839, color: "#0057b8" },
+            { id: "ham", name: "Hammarby IF", league: "europe_other", lat: 59.2928, lng: 18.0839, color: "#00a651" },
+            { id: "ifk", name: "IFK Göteborg", league: "europe_other", lat: 57.7056, lng: 11.9806, color: "#0057b8" },
+            { id: "hac", name: "BK Häcken", league: "europe_other", lat: 57.7231, lng: 11.9128, color: "#ffd700" },
+            { id: "ino", name: "IFK Norrköping", league: "europe_other", lat: 58.5836, lng: 16.1853, color: "#0057b8" },
+            { id: "elf", name: "IF Elfsborg", league: "europe_other", lat: 57.7, lng: 12.93, color: "#ffd700" },
+            { id: "mjb", name: "Mjällby AIF", league: "europe_other", lat: 56.0392, lng: 14.5844, color: "#ffd700" },
+            { id: "sir", name: "IK Sirius", league: "europe_other", lat: 59.8581, lng: 17.6464, color: "#0057b8" },
+            { id: "bpk", name: "IF Brommapojkarna", league: "europe_other", lat: 59.3592, lng: 17.8458, color: "#e30613" },
+            { id: "hbk", name: "Halmstads BK", league: "europe_other", lat: 56.6611, lng: 12.8561, color: "#0057b8" },
+            { id: "gai", name: "GAIS", league: "europe_other", lat: 57.7056, lng: 11.9806, color: "#00a651" },
+            { id: "deg", name: "Degerfors IF", league: "europe_other", lat: 59.2406, lng: 14.4308, color: "#111111" },
+            { id: "vrn", name: "IFK Värnamo", league: "europe_other", lat: 57.1861, lng: 14.0435, color: "#0057b8" },
+            { id: "ost", name: "Östers IF", league: "europe_other", lat: 56.885, lng: 14.8097, color: "#e30613" },
+            { id: "se_vas", name: "Västerås SK", league: "europe_other", lat: 59.6179, lng: 16.5383, color: "#ffd400" },
+            { id: "se_kal", name: "Kalmar FF", league: "europe_other", lat: 56.6826, lng: 16.3213, color: "#e30613" },
+            { id: "se_ory", name: "Örgryte IS", league: "europe_other", lat: 57.7054, lng: 11.9805, color: "#e30613" },
+            /* ---- SWISS SUPER LEAGUE (12 clubs) ---- */
+            { id: "baf", name: "FC Basel", league: "europe_other", lat: 47.5414, lng: 7.6204, color: "#e30613" },
+            { id: "yb", name: "BSC Young Boys", league: "europe_other", lat: 46.9633, lng: 7.4647, color: "#ffd700" },
+            { id: "ser", name: "Servette FC", league: "europe_other", lat: 46.1903, lng: 6.1275, color: "#8b1a2b" },
+            { id: "lug", name: "FC Lugano", league: "europe_other", lat: 46.0017, lng: 8.9561, color: "#d9d9d9" },
+            { id: "fcz", name: "FC Zürich", league: "europe_other", lat: 47.3828, lng: 8.5044, color: "#0057b8" },
+            { id: "gcz", name: "Grasshopper Club", league: "europe_other", lat: 47.3828, lng: 8.5044, color: "#0057b8" },
+            { id: "fcsg", name: "FC St. Gallen", league: "europe_other", lat: 47.4083, lng: 9.3053, color: "#00a651" },
+            { id: "lzn", name: "FC Luzern", league: "europe_other", lat: 47.0356, lng: 8.3039, color: "#0057b8" },
+            { id: "lau", name: "FC Lausanne-Sport", league: "europe_other", lat: 46.5461, lng: 6.6003, color: "#0057b8" },
+            { id: "sio", name: "FC Sion", league: "europe_other", lat: 46.2347, lng: 7.3375, color: "#e30613" },
+            { id: "thu", name: "FC Thun", league: "europe_other", lat: 46.7569, lng: 7.6244, color: "#e30613" },
+            { id: "win", name: "FC Winterthur", league: "europe_other", lat: 47.5, lng: 8.7283, color: "#e30613" },
+            /* ---- SÜPER LIG (18 clubs) ---- */
+            { id: "gal", name: "Galatasaray", league: "europe_other", lat: 41.1033, lng: 28.9911, color: "#fdb912" },
+            { id: "fen", name: "Fenerbahçe", league: "europe_other", lat: 40.9875, lng: 29.0369, color: "#002d72" },
+            { id: "bes", name: "Beşiktaş", league: "europe_other", lat: 41.0392, lng: 28.9944, color: "#000000" },
+            { id: "trb", name: "Trabzonspor", league: "europe_other", lat: 41.0036, lng: 39.7803, color: "#7b1e3a" },
+            { id: "ibf", name: "İstanbul Başakşehir", league: "europe_other", lat: 41.1095, lng: 28.8058, color: "#f58220" },
+            { id: "sam", name: "Samsunspor", league: "europe_other", lat: 41.2808, lng: 36.3433, color: "#e30613" },
+            { id: "goz", name: "Göztepe", league: "europe_other", lat: 38.4055, lng: 27.0963, color: "#ffd700" },
+            { id: "kon", name: "Konyaspor", league: "europe_other", lat: 37.9206, lng: 32.5215, color: "#00a651" },
+            { id: "kas", name: "Kasımpaşa", league: "europe_other", lat: 41.0485, lng: 28.9661, color: "#1e3a8a" },
+            { id: "aly", name: "Alanyaspor", league: "europe_other", lat: 36.55, lng: 32.01, color: "#ff6600" },
+            { id: "atp", name: "Antalyaspor", league: "europe_other", lat: 36.8872, lng: 30.6737, color: "#e30613" },
+            { id: "kay", name: "Kayserispor", league: "europe_other", lat: 38.725, lng: 35.5, color: "#ffd700" },
+            { id: "riz", name: "Çaykur Rizespor", league: "europe_other", lat: 41.0219, lng: 40.5167, color: "#00a651" },
+            { id: "eyp", name: "Eyüpspor", league: "europe_other", lat: 41.068, lng: 28.934, color: "#6a1b9a" },
+            { id: "gaz", name: "Gaziantep FK", league: "europe_other", lat: 37.0522, lng: 37.3228, color: "#e30613" },
+            { id: "koc", name: "Kocaelispor", league: "europe_other", lat: 40.779, lng: 29.95, color: "#00a651" },
+            { id: "gcb", name: "Gençlerbirliği", league: "europe_other", lat: 39.9731, lng: 32.6178, color: "#e30613" },
+            { id: "fkk", name: "Fatih Karagümrük", league: "europe_other", lat: 41.021, lng: 28.9515, color: "#e30613" },
+            /* ---- MAJOR LEAGUE SOCCER (30 clubs) ---- */
+            { id: "mia", name: "Inter Miami", league: "world", lat: 26.193, lng: -80.1611, color: "#f7b5cd" },
+            { id: "lag", name: "LA Galaxy", league: "world", lat: 33.8644, lng: -118.2611, color: "#00245d" },
+            { id: "lafc", name: "LAFC", league: "world", lat: 34.0128, lng: -118.2841, color: "#c39e6d" },
+            { id: "sea", name: "Seattle Sounders", league: "world", lat: 47.5952, lng: -122.3316, color: "#5d9741" },
+            { id: "nyc", name: "New York City FC", league: "world", lat: 40.8296, lng: -73.9262, color: "#6cace4" },
+            { id: "rbn", name: "New York Red Bulls", league: "world", lat: 40.7368, lng: -74.1503, color: "#ed1e36" },
+            { id: "atl", name: "Atlanta United", league: "world", lat: 33.7554, lng: -84.401, color: "#80000a" },
+            { id: "clb", name: "Columbus Crew", league: "world", lat: 39.9684, lng: -83.0171, color: "#fedd00" },
+            { id: "por", name: "Portland Timbers", league: "world", lat: 45.5217, lng: -122.6917, color: "#004812" },
+            { id: "tfc", name: "Toronto FC", league: "world", lat: 43.6332, lng: -79.4186, color: "#b81137" },
+            { id: "us_atx", name: "Austin FC", league: "world", lat: 30.3875, lng: -97.7195, color: "#00a651" },
+            { id: "us_mtl", name: "CF Montréal", league: "world", lat: 45.5628, lng: -73.5517, color: "#0057b8" },
+            { id: "us_clt", name: "Charlotte FC", league: "world", lat: 35.2258, lng: -80.8528, color: "#5bc2e7" },
+            { id: "us_chi", name: "Chicago Fire", league: "world", lat: 41.8623, lng: -87.6167, color: "#e30613" },
+            { id: "us_col", name: "Colorado Rapids", league: "world", lat: 39.8056, lng: -104.8919, color: "#8b1a2b" },
+            { id: "us_dcu", name: "D.C. United", league: "world", lat: 38.8686, lng: -77.0128, color: "#e30613" },
+            { id: "us_cin", name: "FC Cincinnati", league: "world", lat: 39.1111, lng: -84.5225, color: "#ff6600" },
+            { id: "us_dal", name: "FC Dallas", league: "world", lat: 33.1544, lng: -96.8353, color: "#e30613" },
+            { id: "us_hou", name: "Houston Dynamo", league: "world", lat: 29.7522, lng: -95.3522, color: "#ff6600" },
+            { id: "us_min", name: "Minnesota United", league: "world", lat: 44.9528, lng: -93.165, color: "#5bc2e7" },
+            { id: "us_nsh", name: "Nashville SC", league: "world", lat: 36.1303, lng: -86.7653, color: "#ffd700" },
+            { id: "us_ner", name: "New England Revolution", league: "world", lat: 42.0909, lng: -71.2643, color: "#0a2a5e" },
+            { id: "us_orl", name: "Orlando City", league: "world", lat: 28.5411, lng: -81.3894, color: "#6a1b9a" },
+            { id: "us_phi", name: "Philadelphia Union", league: "world", lat: 39.8328, lng: -75.3788, color: "#0a2a5e" },
+            { id: "us_rsl", name: "Real Salt Lake", league: "world", lat: 40.5829, lng: -111.8933, color: "#8b1a2b" },
+            { id: "us_sdg", name: "San Diego FC", league: "world", lat: 32.7833, lng: -117.1219, color: "#ff6600" },
+            { id: "us_sje", name: "San Jose Earthquakes", league: "world", lat: 37.3519, lng: -121.925, color: "#0057b8" },
+            { id: "us_skc", name: "Sporting Kansas City", league: "world", lat: 39.1217, lng: -94.8231, color: "#0057b8" },
+            { id: "us_stl_c", name: "St. Louis City SC", league: "world", lat: 38.6306, lng: -90.21, color: "#e30613" },
+            { id: "us_van", name: "Vancouver Whitecaps", league: "world", lat: 49.2768, lng: -123.1119, color: "#0057b8" }
+        ];
+
+        // Koppeling competitienaam (JSON) -> preset-code die de dropdown gebruikt
+        const LEAGUE_CODE = { "Liga Profesional (Argentinië)": "world", "A-League (Australië)": "world", "Austrian Bundesliga": "europe_other", "Jupiler Pro League": "belgium", "Chinese Super League": "world", "Superliga (Denemarken)": "europe_other", "Premier League": "uk", "Championship": "uk", "League One": "uk", "League Two": "uk", "Ligue 1": "france", "Ligue 2": "france", "Bundesliga": "germany", "2. Bundesliga": "germany", "3. Liga": "germany", "Indian Super League": "world", "Serie A": "italy", "Serie B": "italy", "Eredivisie": "eredivisie", "Eliteserien": "europe_other", "Ekstraklasa": "europe_other", "Liga Portugal": "portugal", "SSE Airtricity Premier Division": "europe_other", "K League 1": "world", "Rest of World": "europe_other", "Superliga (Roemenië)": "europe_other", "Saudi Pro League": "world", "Scottish Premiership": "uk", "La Liga": "spain", "LaLiga 2": "spain", "Allsvenskan": "europe_other", "Swiss Super League": "europe_other", "Süper Lig": "europe_other", "Major League Soccer": "world" };
+        const CLUB_CODE_OVERRIDE = { "rw_ain": "world", "rw_nac": "world", "rw_bah": "world", "rw_bur": "world" };
+
+        // Probeert eafc26_teams_by_league.json naast index.html in te laden (werkt via http/Live Server/GitHub Pages).
+        // Lukt dat niet (bv. dubbelklik = file://), dan blijft de ingebouwde lijst hierboven gewoon werken.
+        async function loadClubsFromJson() {
+            try {
+                const res = await fetch("eafc26_teams_by_league.json", { cache: "no-store" });
+                if (!res.ok) return;
+                const data = await res.json();
+                const list = Array.isArray(data) ? data : data.teams;
+                if (!Array.isArray(list) || list.length < 3) return;
+                MASTER_CLUBS = list.map(c => ({ ...c, league: CLUB_CODE_OVERRIDE[c.id] || LEAGUE_CODE[c.league] || c.league || "europe_other" }));
+                SOURCE_CLUBS = [...MASTER_CLUBS];
+            } catch (err) {
+                console.info("JSON niet geladen, ingebouwde clublijst gebruikt.", err);
+            }
+        }
+
+        function updatePresetLabels() {
+            const n = f => MASTER_CLUBS.filter(f).length;
+            const set = (v, txt) => { const o = document.querySelector('#preset-select option[value="' + v + '"]'); if (o) { o.textContent = txt; o.dataset.base = txt; } };
+            set("all", `\u{1F30D} Alle EA FC 26 Teams (${MASTER_CLUBS.length} Clubs)`);
+            set("belgium", `\u{1F1E7}\u{1F1EA} Belgi\u00eb \u2014 Jupiler Pro League (${n(c => c.league === "belgium")} Clubs)`);
+            set("europe", `\u{1F3C6} Europa Top Competities (${n(c => c.league !== "world")} Clubs)`);
+            set("uk", `\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F} UK & Premier League (${n(c => c.league === "uk")} Clubs)`);
+            refreshPresetBadges();
+        }
+
+        /* ============================================================================
+           2. GLOBAL STATE & LANDMASS GEOJSON LOADING
+           ============================================================================ */
+        let SOURCE_CLUBS = [...MASTER_CLUBS];
+        let TEAMS = [];               // Includes both Real Clubs & Procedural Neutral Territories
+        let cells = new Map();        // id -> Voronoi polygon (clipped to landmass if available)
+        let adj = new Map();          // id -> Set of adjacent neighbor ids
+        let empireCache = new Map();  // key -> merged GeoJSON features
+        let landmassGeoJSON = null;   // Loaded world/europe landmass polygons for real borders
+        let inspectedOwnerId = null;
+
+        const state = {
+            attacker: null,
+            defender: null,
+            turn: 1,
+            over: false,
+            isSpinning: false,
+            players: [],
+            enableNeutral: true,
+            enableClip: true
+        };
+
+        let LOG = [];                       // log-regels (nieuwste eerst), wordt mee opgeslagen
+        let compassAngle = 0;
+        let saveEnabled = false;
+        let lastPreset = "all";
+        let pendingTransfer = null;
+        const SAVE_KEY = "eafc26_imperialism_save_v1";      // oude save (wordt gemigreerd)
+        const SLOTS_KEY = "eafc26_imperialism_slots_v2";    // { active, slots: { [preset]: save } }
+        let customSource = false;                            // true na JSON-import (clubs komen niet uit een preset)
+
+        const $ = id => document.getElementById(id);
+        const byId = id => TEAMS.find(t => t.id === id);
+        const members = ownerId => TEAMS.filter(t => t.ownerId === ownerId);
+        const activeRealClubs = () => TEAMS.filter(t => t.isActive && !t.isNeutral);
+        const activeNeutralZones = () => TEAMS.filter(t => t.isActive && t.isNeutral && t.ownerId === t.id);
+        const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+        /* ============================================================================
+           3. LEAFLET MAP SETUP (100% FREE OPENSTREETMAP + DARK MODE CSS)
+           ============================================================================ */
+        const map = L.map("map", {
+            zoomSnap: 0.25,
+            worldCopyJump: true,
+            zoomControl: false
+        }).setView([50.85, 4.35], 5);
+
+        L.control.zoom({ position: "bottomleft" }).addTo(map);
+
+        // 100% Free Standard OpenStreetMap Tiles (No API Key Required)
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        const shapeLayer = L.layerGroup().addTo(map);
+        const vectorLayer = L.layerGroup().addTo(map);
+        const markerLayer = L.layerGroup().addTo(map);
+        const beaconLayer = L.layerGroup().addTo(map);
+
+        map.on("zoomend", () => {
+            map.getContainer().classList.toggle("low-zoom", map.getZoom() < 5.2);
+        });
+
+        /* ============================================================================
+           4. NORMALIZATION & PROCEDURAL NEUTRAL ZONES ("EMPTY REGIONS")
+           ============================================================================ */
+        const hashColor = s => {
+            let h = 0;
+            for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360;
+            return `hsl(${h}, 68%, 50%)`;
+        };
+
+        function normalizeAndGenerateTeams(rawList) {
+            const seenId = new Set();
+            const seenPos = new Map();
+            const realOut = [];
+
+            for (const raw of rawList) {
+                const t = Array.isArray(raw)
+                    ? { id: raw[0], name: raw[1], lat: raw[2], lng: raw[3], color: raw[4] }
+                    : { ...raw };
+
+                t.lat = Number(t.lat);
+                t.lng = Number(t.lng);
+                if (!t.id || !t.name || !isFinite(t.lat) || !isFinite(t.lng) || seenId.has(t.id)) continue;
+                seenId.add(t.id);
+
+                // Nudge stadium-sharing clubs (e.g., Club Brugge & Cercle, Inter & Milan) slightly in a circle
+                const posKey = t.lat.toFixed(4) + "," + t.lng.toFixed(4);
+                const dupIdx = seenPos.get(posKey) || 0;
+                seenPos.set(posKey, dupIdx + 1);
+                if (dupIdx > 0) {
+                    const angle = dupIdx * 2.4;
+                    t.lat += Math.cos(angle) * 0.008 * dupIdx;
+                    t.lng += Math.sin(angle) * 0.011 * dupIdx;
+                }
+
+                t.color = t.color || hashColor(t.id);
+                t.isActive = true;
+                t.isNeutral = false;
+                t.ownerId = t.id;
+                t.upgrades = 0;
+                t.wins = 0;
+                realOut.push(t);
+            }
+
+            // Vrije gebieden: elk land dat vrije ruimte heeft krijgt zijn eigen gebied = zijn eigen upgrade
+            const neutralOut = [];
+            if (state.enableNeutral && realOut.length >= 3) {
+                const lats = realOut.map(t => t.lat);
+                const lngs = realOut.map(t => t.lng);
+                const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+                const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+                const latSpan = Math.max(0.8, maxLat - minLat);
+                const lngSpan = Math.max(1.0, maxLng - minLng);
+                const hasLand = state.enableClip && landmassGeoJSON && landmassGeoJSON.features;
+
+                const perCountry = new Map();          // landnaam -> aantal vrije gebieden
+                const clubCountries = new Set();       // landen waar al een club staat
+                if (hasLand) {
+                    for (const club of realOut) {
+                        const c = countryAt(club.lng, club.lat);
+                        club.country = c ? countryName(c) : null;
+                        if (club.country) clubCountries.add(club.country);
+                    }
+                }
+                const addNeutral = (lat, lng, country) => {
+                    const nid = `neutral_${neutralOut.length + 1}`;
+                    let name = `Neutrale Regio #${neutralOut.length + 1}`;
+                    if (country) {
+                        const k = (perCountry.get(country) || 0) + 1;
+                        perCountry.set(country, k);
+                        name = k === 1 ? `Vrij gebied ${country}` : `Vrij gebied ${country} #${k}`;
+                    }
+                    neutralOut.push({
+                        id: nid,
+                        name,
+                        country: country || null,
+                        lat: Number(lat.toFixed(4)),
+                        lng: Number(lng.toFixed(4)),
+                        color: "#334155",
+                        isActive: true,
+                        isNeutral: true,
+                        ownerId: nid,
+                        upgrades: 0,
+                        wins: 0
+                    });
+                };
+
+                // A) Elk land zonder club binnen het speelgebied krijgt gegarandeerd 1 vrij gebied
+                if (hasLand) {
+                    const bb = [minLng - lngSpan * 0.06, minLat - latSpan * 0.06, maxLng + lngSpan * 0.06, maxLat + latSpan * 0.06];
+                    for (const feat of landmassGeoJSON.features) {
+                        if (!feat.geometry) continue;
+                        const name = countryName(feat);
+                        if (!name || name === "Antarctica" || clubCountries.has(name)) continue;
+                        let pt;
+                        try { pt = turf.pointOnFeature(feat).geometry.coordinates; } catch (e) { continue; }
+                        if (pt[0] < bb[0] || pt[0] > bb[2] || pt[1] < bb[1] || pt[1] > bb[3]) continue;
+                        addNeutral(pt[1], pt[0], name);
+                    }
+                }
+
+                // B) Rasterpunten in lege ruimte (ook binnen landen met clubs), elk met de naam van het land
+                const rows = realOut.length <= 25 ? 5 : 7;
+                const cols = realOut.length <= 25 ? 6 : 8;
+                const minDistDeg = Math.hypot(latSpan / (rows * 1.65), lngSpan / (cols * 1.65));
+                const pointsSoFar = () => [...realOut, ...neutralOut];
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const candLat = (minLat - latSpan * 0.06) + ((r + 0.5) / rows) * (latSpan * 1.12);
+                        const candLng = (minLng - lngSpan * 0.06) + ((c + 0.5) / cols) * (lngSpan * 1.12);
+
+                        let tooClose = false;
+                        for (const club of pointsSoFar()) {
+                            const d = Math.hypot(club.lat - candLat, (club.lng - candLng) * Math.cos(candLat * Math.PI / 180));
+                            if (d < minDistDeg * 0.72) { tooClose = true; break; }
+                        }
+                        if (tooClose) continue;
+
+                        let country = null;
+                        if (hasLand) {
+                            const cf = countryAt(candLng, candLat);
+                            if (!cf) continue;                       // zee overslaan
+                            country = countryName(cf);
+                        }
+                        addNeutral(candLat, candLng, country);
+                    }
+                }
+            }
+
+            return [...realOut, ...neutralOut];
+        }
+
+        function countryName(feat) {
+            const p = feat.properties || {};
+            return p.NAME_NL || p.NAME || p.ADMIN || p.name || null;
+        }
+
+        /** Geeft de landfeature terug waarin dit punt ligt (of null op zee). */
+        function countryAt(lng, lat) {
+            if (!landmassGeoJSON || !landmassGeoJSON.features) return null;
+            const pt = turf.point([lng, lat]);
+            for (const feat of landmassGeoJSON.features) {
+                if (!feat.geometry) continue;
+                const bb = feat._bbox || (feat._bbox = turf.bbox(feat));
+                if (lng < bb[0] || lng > bb[2] || lat < bb[1] || lat > bb[3]) continue;
+                try { if (turf.booleanPointInPolygon(pt, feat)) return feat; } catch (e) { }
+            }
+            return null;
+        }
+
+        function isPointOnLand(lng, lat) {
+            if (!landmassGeoJSON || !landmassGeoJSON.features) return true;
+            const pt = turf.point([lng, lat]);
+            for (const feat of landmassGeoJSON.features) {
+                if (!feat.geometry) continue;
+                try {
+                    if (turf.booleanPointInPolygon(pt, feat)) return true;
+                } catch (e) { }
+            }
+            return false;
+        }
+
+        /* ============================================================================
+           5. VORONOI GEOMETRY + REAL COUNTRY LANDMASS CLIPPING
+           ============================================================================ */
+        function buildGeometry() {
+            cells = new Map();
+            adj = new Map();
+            empireCache = new Map();
+
+            const pts = turf.featureCollection(
+                TEAMS.map(t => turf.point([t.lng, t.lat], { id: t.id }))
+            );
+
+            const lngs = TEAMS.map(t => t.lng);
+            const lats = TEAMS.map(t => t.lat);
+            const latPad = Math.max(0.45, (Math.max(...lats) - Math.min(...lats)) * 0.14);
+            const lngPad = Math.max(0.65, (Math.max(...lngs) - Math.min(...lngs)) * 0.14);
+
+            const bbox = [
+                Math.max(-179, Math.min(...lngs) - lngPad),
+                Math.max(-85, Math.min(...lats) - latPad),
+                Math.min(179, Math.max(...lngs) + lngPad),
+                Math.min(85, Math.max(...lats) + latPad)
+            ];
+
+            const vor = turf.voronoi(pts, { bbox });
+            const rawCells = new Map();
+
+            vor.features.forEach((f, i) => {
+                if (f && f.geometry) {
+                    rawCells.set(TEAMS[i].id, f);
+                }
+            });
+
+            // Compute adjacency BEFORE landmass clipping so coastal/island neighbors can still attack across channels
+            const vertexOwners = new Map();
+            for (const [id, f] of rawCells) {
+                const ring = f.geometry.coordinates[0] || [];
+                for (const [x, y] of ring) {
+                    const k = x.toFixed(4) + "," + y.toFixed(4);
+                    if (!vertexOwners.has(k)) vertexOwners.set(k, new Set());
+                    vertexOwners.get(k).add(id);
+                }
+            }
+
+            const shared = new Map();
+            for (const ids of vertexOwners.values()) {
+                const arr = [...ids];
+                for (let i = 0; i < arr.length; i++) {
+                    for (let j = i + 1; j < arr.length; j++) {
+                        const k = arr[i] < arr[j] ? arr[i] + "|" + arr[j] : arr[j] + "|" + arr[i];
+                        shared.set(k, (shared.get(k) || 0) + 1);
+                    }
+                }
+            }
+
+            TEAMS.forEach(t => adj.set(t.id, new Set()));
+            for (const [k, count] of shared) {
+                if (count < 2) continue;
+                const [a, b] = k.split("|");
+                adj.get(a).add(b);
+                adj.get(b).add(a);
+            }
+
+            // Clip Voronoi cells to real landmass borders if enabled & loaded
+            for (const [id, rawCell] of rawCells) {
+                if (state.enableClip && landmassGeoJSON) {
+                    const clipped = clipCellToLandmass(rawCell);
+                    cells.set(id, clipped || rawCell);
+                } else {
+                    cells.set(id, rawCell);
+                }
+            }
+        }
+
+        function clipCellToLandmass(cell) {
+            if (!landmassGeoJSON || !landmassGeoJSON.features) return cell;
+            try {
+                const cellBbox = turf.bbox(cell);
+                const overlappingPieces = [];
+
+                for (const country of landmassGeoJSON.features) {
+                    if (!country.geometry) continue;
+                    const cBbox = country._bbox || (country._bbox = turf.bbox(country));
+                    // Fast AABB bounding box rejection
+                    if (
+                        cBbox[2] < cellBbox[0] ||
+                        cBbox[0] > cellBbox[2] ||
+                        cBbox[3] < cellBbox[1] ||
+                        cBbox[1] > cellBbox[3]
+                    ) {
+                        continue;
+                    }
+                    try {
+                        const inter = turf.intersect(cell, country);
+                        if (inter) overlappingPieces.push(inter);
+                    } catch (err) { }
+                }
+
+                if (overlappingPieces.length === 0) return cell;
+                let combined = overlappingPieces[0];
+                for (let i = 1; i < overlappingPieces.length; i++) {
+                    try {
+                        const u = turf.union(combined, overlappingPieces[i]);
+                        if (u) combined = u;
+                    } catch (e) { }
+                }
+                return combined;
+            } catch (e) {
+                return cell;
+            }
+        }
+
+        /** Merge all territories belonging to one ownerId into seamless empire polygons */
+        function empireShape(ownerId) {
+            const memIds = members(ownerId).map(t => t.id);
+            const cacheKey = `${ownerId}:${state.enableClip}:${memIds.join(",")}`;
+            if (empireCache.has(cacheKey)) return empireCache.get(cacheKey);
+
+            let merged = null;
+            const extras = [];
+            for (const id of memIds) {
+                const cell = cells.get(id);
+                if (!cell) continue;
+                if (!merged) {
+                    merged = cell;
+                    continue;
+                }
+                try {
+                    const u = turf.union(merged, cell);
+                    if (u) merged = u;
+                    else extras.push(cell);
+                } catch (e) {
+                    extras.push(cell);
+                }
+            }
+            const result = merged ? [merged, ...extras] : extras;
+            empireCache.set(cacheKey, result);
+            return result;
+        }
+
+        /* ============================================================================
+           6. MAP RENDERING & HIGH-VISIBILITY HIGHLIGHTS
+           ============================================================================ */
+        function render() {
+            renderPlayers();
+            saveGame();
+            shapeLayer.clearLayers();
+            vectorLayer.clearLayers();
+            markerLayer.clearLayers();
+            beaconLayer.clearLayers();
+
+            const uniqueOwners = [...new Set(TEAMS.map(t => t.ownerId))];
+
+            // Sort so Attacker and Defender render last (on top)
+            uniqueOwners.sort((a, b) => {
+                const score = id => (id === state.attacker || id === state.defender ? 10 : 0);
+                return score(a) - score(b);
+            });
+
+            for (const ownerId of uniqueOwners) {
+                const owner = byId(ownerId);
+                if (!owner) continue;
+
+                const isAtt = ownerId === state.attacker;
+                const isDef = ownerId === state.defender;
+                const isNeutral = owner.isNeutral;
+
+                let fillColor = owner.color;
+                let fillOpacity = isNeutral ? 0.35 : 0.62;
+                let strokeColor = isNeutral ? "#475569" : "#0f172a";
+                let weight = isNeutral ? 1 : 1.5;
+                let className = "territory-poly";
+
+                if (isAtt) {
+                    fillColor = "#ffd400";
+                    fillOpacity = 0.86;
+                    strokeColor = "#ffffff";
+                    weight = 4;
+                    className += " attacker-glow";
+                } else if (isDef) {
+                    if (isNeutral) {
+                        fillColor = "#10b981";
+                        fillOpacity = 0.85;
+                        strokeColor = "#ffffff";
+                        weight = 4;
+                        className += " defender-neutral-glow";
+                    } else {
+                        fillColor = "#ff4d1a";
+                        fillOpacity = 0.86;
+                        strokeColor = "#ffffff";
+                        weight = 4;
+                        className += " defender-glow";
+                    }
+                }
+
+                const style = {
+                    fillColor,
+                    fillOpacity,
+                    color: strokeColor,
+                    weight,
+                    className,
+                    dashArray: isNeutral && !isDef ? "4,4" : null
+                };
+
+                const terrCount = members(ownerId).length;
+                const tooltipHtml = isNeutral
+                    ? `<div class="font-bold text-emerald-400">${esc(owner.name)}</div><div class="text-[11px] text-slate-300">Onbezet gebied • Winnaar krijgt <b>+1 Free Upgrade</b></div>`
+                    : `<div class="font-bold text-white">${esc(owner.name)}</div><div class="text-[11px] text-slate-300">Regio's: <b>${terrCount}</b> • Upgrades: <b>+${owner.upgrades}</b> • Wins: <b>${owner.wins}</b></div>`;
+
+                for (const feature of empireShape(ownerId)) {
+                    const layer = L.geoJSON(feature, { style })
+                        .bindTooltip(tooltipHtml, { sticky: true, className: "imperial-tooltip" })
+                        .on("click", () => openInspector(ownerId))
+                        .addTo(shapeLayer);
+
+                    if (isAtt || isDef) {
+                        layer.bringToFront();
+                    }
+                }
+            }
+
+            // Draw Club Pins for Active Real Clubs
+            for (const t of TEAMS.filter(t => t.isActive && !t.isNeutral)) {
+                const upgradeBadge = t.upgrades > 0 ? ` <span style="color:#34d399">★${t.upgrades}</span>` : "";
+                L.marker([t.lat, t.lng], {
+                    icon: L.divIcon({
+                        className: "club-pin",
+                        iconSize: [0, 0],
+                        html: `<div class="dot" style="--c:${t.color}"></div><div class="name">${esc(t.name)}${upgradeBadge}</div>`
+                    })
+                })
+                    .on("click", () => openInspector(t.id))
+                    .addTo(markerLayer);
+            }
+
+            // Draw High-Visibility Beacons & Attack Vector Line for Attacker and Defender
+            if (state.attacker) {
+                const att = byId(state.attacker);
+                if (att) {
+                    L.marker([att.lat, att.lng], {
+                        icon: L.divIcon({
+                            className: "beacon-pin",
+                            iconSize: [0, 0],
+                            html: `
+                <div class="beacon-ring" style="--beacon-color:#ffd400"></div>
+                <div class="beacon-badge bg-amber-400 text-slate-950">⚔️ AANVALLER: ${esc(att.name)}</div>
+              `
+                        })
+                    }).addTo(beaconLayer);
+                }
+            }
+
+            if (state.defender) {
+                const def = byId(state.defender);
+                const att = byId(state.attacker);
+                if (def) {
+                    const isNeu = def.isNeutral;
+                    const badgeBg = isNeu ? "bg-emerald-500 text-slate-950" : "bg-orange-600 text-white";
+                    const beaconCol = isNeu ? "#10b981" : "#ff4d1a";
+                    const prefix = isNeu ? "🎁 FREE UPGRADE" : "🛡️ VERDEDIGER";
+
+                    L.marker([def.lat, def.lng], {
+                        icon: L.divIcon({
+                            className: "beacon-pin",
+                            iconSize: [0, 0],
+                            html: `
+                <div class="beacon-ring" style="--beacon-color:${beaconCol}"></div>
+                <div class="beacon-badge ${badgeBg}">${prefix}: ${esc(def.name)}</div>
+              `
+                        })
+                    }).addTo(beaconLayer);
+
+                    // Animated dashed attack line connecting Attacker & Defender
+                    if (att) {
+                        L.polyline(
+                            [
+                                [att.lat, att.lng],
+                                [def.lat, def.lng]
+                            ],
+                            {
+                                color: "#ffffff",
+                                weight: 3.5,
+                                className: "attack-vector-line"
+                            }
+                        ).addTo(vectorLayer);
+                    }
+                }
+            }
+
+            updateUI();
+        }
+
+        function boundsOf(...ownerIds) {
+            const features = ownerIds.flatMap(id => empireShape(id));
+            return L.geoJSON(features).getBounds();
+        }
+
+        /* ============================================================================
+           7. GAMEPLAY MECHANICS: ROLL ATTACKER, ROLL DEFENDER, BATTLE & UPGRADES
+           ============================================================================ */
+        const pickRandom = arr => arr[Math.floor(Math.random() * arr.length)];
+
+        /** Returns all active empire ownerIds that share a Voronoi border with ownerId */
+        function getNeighborOwners(ownerId) {
+            const neighbors = new Set();
+            for (const m of members(ownerId)) {
+                for (const nid of adj.get(m.id) || []) {
+                    const neighborOwner = byId(nid)?.ownerId;
+                    if (neighborOwner && neighborOwner !== ownerId) {
+                        neighbors.add(neighborOwner);
+                    }
+                }
+            }
+
+            // Fallback if island club has no remaining connected edges: pick geographically closest active empire
+            if (neighbors.size === 0) {
+                const myClub = byId(ownerId);
+                let closestId = null;
+                let bestDist = Infinity;
+                for (const t of TEAMS) {
+                    if (t.ownerId === ownerId) continue;
+                    const d = Math.hypot(t.lat - myClub.lat, t.lng - myClub.lng);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        closestId = t.ownerId;
+                    }
+                }
+                if (closestId) neighbors.add(closestId);
+            }
+
+            return [...neighbors];
+        }
+
+        function rollAttacker() {
+            const clubs = activeRealClubs();
+            if (clubs.length < 2 || state.isSpinning) return;
+
+            state.isSpinning = true;
+            state.defender = null;
+            let ticks = 0;
+            const totalTicks = 10;
+
+            const timer = setInterval(() => {
+                const temp = pickRandom(clubs);
+                $("status-message").innerHTML = `<span class="text-amber-400 font-bold"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Kiest aanvaller: ${esc(temp.name)}...</span>`;
+                ticks++;
+                if (ticks >= totalTicks) {
+                    clearInterval(timer);
+                    state.isSpinning = false;
+                    state.attacker = temp.id;
+                    render();
+                    map.flyToBounds(boundsOf(state.attacker), { maxZoom: 7.5, padding: [50, 50], duration: 0.75 });
+                }
+            }, 55);
+        }
+
+        /** Kompas-hoek (graden, 0 = noord, kloksgewijs) van de ene regio naar de andere, zoals op het scherm. */
+        function bearingOwners(aOwner, bOwner) {
+            let best = null;
+            for (const a of members(aOwner)) {
+                for (const b of members(bOwner)) {
+                    const d = Math.hypot(a.lat - b.lat, (a.lng - b.lng) * Math.cos(a.lat * Math.PI / 180));
+                    if (!best || d < best.d) best = { d, a, b };
+                }
+            }
+            if (!best) return 0;
+            const pa = L.CRS.EPSG3857.project(L.latLng(best.a.lat, best.a.lng));
+            const pb = L.CRS.EPSG3857.project(L.latLng(best.b.lat, best.b.lng));
+            return (Math.atan2(pb.x - pa.x, pb.y - pa.y) * 180 / Math.PI + 360) % 360;
+        }
+
+        function buildCompassFace() {
+            let g = `<circle cx="100" cy="100" r="94" fill="#0b1220" stroke="#fbbf24" stroke-width="3"/>
+                     <circle cx="100" cy="100" r="80" fill="none" stroke="#334155" stroke-width="1"/>`;
+            for (let a = 0; a < 360; a += 15) {
+                const major = a % 90 === 0;
+                const r1 = major ? 80 : 86, r2 = 92;
+                const rad = a * Math.PI / 180;
+                g += `<line x1="${100 + Math.sin(rad) * r1}" y1="${100 - Math.cos(rad) * r1}" x2="${100 + Math.sin(rad) * r2}" y2="${100 - Math.cos(rad) * r2}" stroke="${major ? "#fbbf24" : "#64748b"}" stroke-width="${major ? 2.5 : 1.2}"/>`;
+            }
+            g += `<text x="100" y="34" text-anchor="middle" fill="#ef4444" font-size="16" font-weight="800" font-family="Rajdhani, sans-serif">N</text>
+                  <text x="172" y="106" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700" font-family="Rajdhani, sans-serif">O</text>
+                  <text x="100" y="180" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700" font-family="Rajdhani, sans-serif">Z</text>
+                  <text x="28" y="106" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700" font-family="Rajdhani, sans-serif">W</text>`;
+            $("compass-face").innerHTML = g;
+        }
+
+        function spinCompass(targetDeg, attackerName, chosenName, done) {
+            const overlay = $("compass-overlay");
+            const needle = $("compass-needle");
+            const label = $("compass-label");
+            label.innerHTML = `<i class="fa-solid fa-compass fa-spin mr-1"></i>Kompas zoekt een tegenstander voor ${esc(attackerName)}...`;
+            overlay.classList.remove("hidden");
+            overlay.classList.add("flex");
+
+            // Startpositie zonder animatie, dan een paar volle rondjes en afremmen op de juiste hoek
+            needle.style.transition = "none";
+            needle.style.transform = `rotate(${compassAngle}deg)`;
+            void needle.getBoundingClientRect();
+            const delta = (((targetDeg - compassAngle) % 360) + 360) % 360;
+            const finalAngle = compassAngle + 360 * 2 + delta;
+            needle.style.transition = "transform 1.3s cubic-bezier(0.15, 0.8, 0.25, 1)";
+            needle.style.transform = `rotate(${finalAngle}deg)`;
+            compassAngle = finalAngle;
+
+            setTimeout(() => {
+                label.innerHTML = `<i class="fa-solid fa-location-arrow mr-1"></i>Tegenstander: <span class="text-white">${esc(chosenName)}</span>`;
+            }, 1350);
+            setTimeout(() => {
+                overlay.classList.add("hidden");
+                overlay.classList.remove("flex");
+                done();
+            }, 1950);
+        }
+
+        function rollDefender() {
+            if (!state.attacker || state.isSpinning) return;
+            const options = getNeighborOwners(state.attacker);
+            if (!options.length) {
+                $("status-message").textContent = "Geen aangrenzend gebied gevonden. Kies een nieuwe aanvaller.";
+                return;
+            }
+
+            const chosenId = pickRandom(options);
+            const chosen = byId(chosenId);
+            const att = byId(state.attacker);
+            const target = bearingOwners(state.attacker, chosenId);
+
+            state.isSpinning = true;
+            $("card-def-name").textContent = "...";
+            $("status-message").innerHTML = `<span class="text-amber-400 font-bold"><i class="fa-solid fa-compass fa-spin mr-1"></i>Kompas draait...</span>`;
+
+            spinCompass(target, att ? att.name : "", chosen ? chosen.name : "?", () => {
+                state.isSpinning = false;
+                state.defender = chosenId;
+                render();
+                map.flyToBounds(boundsOf(state.attacker, state.defender), {
+                    maxZoom: 7.5,
+                    padding: [70, 70],
+                    duration: 0.85
+                });
+            });
+        }
+
+        function annexTerritory(winnerId, loserId) {
+            for (const t of TEAMS) {
+                if (t.ownerId === loserId) {
+                    t.ownerId = winnerId;
+                }
+            }
+            const loser = byId(loserId);
+            if (loser) loser.isActive = false;
+
+            empireCache.clear();
+            state.attacker = null;
+            state.defender = null;
+            state.turn++;
+            render();
+        }
+
+        function resolveBattle(attackerWon) {
+            if (!state.attacker || !state.defender) return;
+            const att = byId(state.attacker);
+            const def = byId(state.defender);
+            if (!att || !def) return;
+
+            // Case 1: Neutral Zone Annexation -> Free Squad Upgrade
+            if (def.isNeutral) {
+                att.upgrades = (att.upgrades || 0) + 1;
+                addLog(
+                    `Ronde ${state.turn}: <b class="text-amber-300">${esc(att.name)}</b> nam <span class="text-emerald-400">${esc(def.name)}</span> in en kreeg een <b>+1 Free Squad Upgrade</b>!`
+                );
+                annexTerritory(att.id, def.id);
+                closeModal();
+                checkVictory(att);
+                return;
+            }
+
+            // Case 2: Real Club vs Real Club Battle -> eerst de speler-transfer noteren
+            const winner = attackerWon ? att : def;
+            const loser = attackerWon ? def : att;
+            openTransferModal(winner, loser, attackerWon);
+        }
+
+        /* ---- Speler-transfers ---- */
+        function openTransferModal(winner, loser, attackerWon) {
+            pendingTransfer = { winnerId: winner.id, loserId: loser.id, attackerWon };
+            $("tr-title").textContent = `${winner.name} wint van ${loser.name}`;
+            $("tr-sub").textContent = `${winner.name} neemt een speler mee van ${loser.name}. Noteer hem nu, dan vergeet je het niet.`;
+            $("tr-label").textContent = `Speler van ${loser.name}`;
+            $("tr-list").innerHTML = state.players
+                .filter(p => p.currentId === loser.id)
+                .map(p => `<option value="${esc(p.name)}"></option>`).join("");
+            $("tr-name").value = "";
+            $("tr-note").value = "";
+            $("tr-err").classList.add("hidden");
+            $("transfer-modal").classList.remove("hidden");
+            $("transfer-modal").classList.add("flex");
+            setTimeout(() => $("tr-name").focus(), 60);
+        }
+
+        function closeTransferModal() {
+            $("transfer-modal").classList.add("hidden");
+            $("transfer-modal").classList.remove("flex");
+            pendingTransfer = null;
+        }
+
+        function recordTransfer(winner, loser, name, note) {
+            const key = name.trim().toLowerCase();
+            let pl = state.players.find(p => p.currentId === loser.id && p.name.toLowerCase() === key);
+            const step = { round: state.turn, from: loser.name, to: winner.name };
+            if (pl) {
+                pl.currentId = winner.id;
+                pl.path.push(step);
+                if (note) pl.note = note;
+            } else {
+                pl = {
+                    id: "p" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36),
+                    name: name.trim(),
+                    note: note || "",
+                    originId: loser.id,
+                    originName: loser.name,
+                    currentId: winner.id,
+                    path: [step]
+                };
+                state.players.push(pl);
+            }
+            return pl;
+        }
+
+        function completeBattle(name, note) {
+            const pt = pendingTransfer;
+            if (!pt) return;
+            const winner = byId(pt.winnerId);
+            const loser = byId(pt.loserId);
+            if (!winner || !loser) { closeTransferModal(); return; }
+            closeTransferModal();
+
+            winner.wins = (winner.wins || 0) + 1;
+            const actionVerb = pt.attackerWon ? "veroverde" : "hield stand en annexeerde";
+            const winColor = pt.attackerWon ? "text-amber-300" : "text-orange-400";
+
+            let extra;
+            if (name) {
+                const pl = recordTransfer(winner, loser, name, note);
+                extra = `<br><span class="text-sky-300"><i class="fa-solid fa-right-left mr-1"></i>${esc(pl.name)}</span> verhuist van ${esc(loser.name)} naar ${esc(winner.name)}`;
+            } else {
+                extra = `<br><span class="text-slate-500">Geen speler genomen.</span>`;
+            }
+
+            addLog(
+                `Ronde ${state.turn}: <b class="${winColor}">${esc(winner.name)}</b> ${actionVerb} <b>${esc(loser.name)}</b>!${extra}`
+            );
+
+            annexTerritory(winner.id, loser.id);
+            closeModal();
+            checkVictory(winner);
+        }
+
+        function renderPlayers() {
+            const box = $("pl-list");
+            if (!box) return;
+            if (!state.players.length) {
+                box.innerHTML = `<div class="text-slate-500 italic text-center py-6">Nog geen spelers verhuisd. Na elke gewonnen wedstrijd noteer je hier de speler die de winnaar meeneemt.</div>`;
+                return;
+            }
+            const q = ($("pl-filter").value || "").trim().toLowerCase();
+            const list = state.players.filter(p => !q
+                || p.name.toLowerCase().includes(q)
+                || (p.note || "").toLowerCase().includes(q)
+                || p.path.some(st => st.from.toLowerCase().includes(q) || st.to.toLowerCase().includes(q)));
+
+            const groups = new Map();
+            for (const p of list) {
+                if (!groups.has(p.currentId)) groups.set(p.currentId, []);
+                groups.get(p.currentId).push(p);
+            }
+            const ordered = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+            let html = `<div class="text-slate-400">${state.players.length} speler${state.players.length === 1 ? "" : "s"} verhuisd${q ? ` • ${list.length} gevonden` : ""}</div>`;
+            if (!list.length) html += `<div class="text-slate-500 italic text-center py-4">Geen resultaten.</div>`;
+            for (const [clubId, pls] of ordered) {
+                const club = byId(clubId);
+                const clubName = club ? club.name : "?";
+                let sub = "";
+                if (club && !club.isActive) {
+                    const owner = byId(club.ownerId);
+                    if (owner) sub = ` <span class="font-normal text-slate-500">(opgeslokt door ${esc(owner.name)})</span>`;
+                }
+                html += `<div class="rounded-lg border border-slate-800 bg-slate-950/75 p-2">
+                    <div class="flex justify-between font-bold text-amber-300"><span>${esc(clubName)}${sub}</span><span class="text-slate-400">${pls.length}</span></div>`;
+                for (const p of pls) {
+                    const route = [p.path[0].from, ...p.path.map(st => st.to)].map(esc).join(" → ");
+                    html += `<div class="mt-1.5 pl-2 border-l-2 border-sky-500/50">
+                        <div class="text-slate-100 font-semibold">${esc(p.name)}${p.note ? ` <span class="font-normal text-slate-400">• ${esc(p.note)}</span>` : ""}</div>
+                        <div class="text-[11px] text-slate-400 leading-snug">${route}</div>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+            box.innerHTML = html;
+        }
+
+        /* ---- Opslaan / herstellen (localStorage) ---- */
+        let saveTimer = null;
+        function saveGame() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveNow, 120);
+        }
+        function readSlots() {
+            try {
+                const raw = localStorage.getItem(SLOTS_KEY);
+                if (raw) {
+                    const o = JSON.parse(raw);
+                    if (o && o.slots) return o;
+                }
+            } catch (err) { }
+            return { active: null, slots: {} };
+        }
+        function snapshotCurrent() {
+            return {
+                v: 2,
+                savedAt: Date.now(),
+                preset: lastPreset,
+                custom: customSource ? SOURCE_CLUBS : null,
+                enableNeutral: state.enableNeutral,
+                enableClip: state.enableClip,
+                st: { attacker: state.attacker, defender: state.defender, turn: state.turn, over: state.over },
+                teams: TEAMS,
+                players: state.players,
+                log: LOG
+            };
+        }
+        function saveNow() {
+            if (!saveEnabled || !TEAMS.length) return;
+            try {
+                const store = readSlots();
+                store.active = lastPreset;
+                store.slots[lastPreset] = snapshotCurrent();
+                localStorage.setItem(SLOTS_KEY, JSON.stringify(store));
+            } catch (err) {
+                console.warn("Opslaan mislukt", err);
+            }
+            refreshPresetBadges();
+        }
+        /** Zet bij elke mode in de dropdown erbij hoeveel rondes er al gespeeld zijn */
+        function refreshPresetBadges() {
+            const slots = readSlots().slots;
+            document.querySelectorAll("#preset-select option").forEach(o => {
+                if (o.dataset.base === undefined) o.dataset.base = o.textContent;
+                const sv = slots[o.value];
+                const rounds = sv && sv.st ? (sv.st.turn || 1) - 1 : 0;
+                o.textContent = rounds > 0 ? `${o.dataset.base}  \u25B6 ronde ${rounds + 1}` : o.dataset.base;
+            });
+        }
+        function hasProgress() {
+            return state.turn > 1 || state.players.length > 0;
+        }
+        function confirmWipe(msg) {
+            if (!hasProgress()) return true;
+            return confirm(`${msg}\n\nJe huidige game (${state.turn - 1} ronde(s), ${state.players.length} speler(s)) gaat dan verloren.`);
+        }
+        function renderLogFromArray() {
+            const box = $("tab-log");
+            if (!LOG.length) {
+                box.innerHTML = `<div class="text-slate-500 italic text-center py-6">Nog geen wedstrijden gespeeld.</div>`;
+                return;
+            }
+            box.innerHTML = "";
+            for (const html of LOG) {
+                const item = document.createElement("div");
+                item.className = "bg-slate-950/75 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 leading-snug";
+                item.innerHTML = html;
+                box.appendChild(item);
+            }
+        }
+        function fitToClubs() {
+            const realClubs = TEAMS.filter(t => !t.isNeutral);
+            if (!realClubs.length) return;
+            const lats = realClubs.map(t => t.lat);
+            const lngs = realClubs.map(t => t.lng);
+            map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [45, 45] });
+        }
+        /** Laad een opgeslagen game-slot (van een mode) in het scherm. */
+        function applySave(sv, presetKey) {
+            if (!sv || !Array.isArray(sv.teams) || sv.teams.length < 3 || !sv.st) return false;
+            state.enableNeutral = sv.enableNeutral !== false;
+            state.enableClip = sv.enableClip !== false;
+            $("chk-neutral").checked = state.enableNeutral;
+            $("chk-clip").checked = state.enableClip;
+            lastPreset = presetKey;
+            if (document.querySelector(`#preset-select option[value="${presetKey}"]`)) {
+                $("preset-select").value = presetKey;
+            }
+            if (Array.isArray(sv.custom) && sv.custom.length) {
+                customSource = true;
+                SOURCE_CLUBS = sv.custom;
+            } else {
+                customSource = false;
+                SOURCE_CLUBS = presetClubs(presetKey);
+            }
+            TEAMS = sv.teams;
+            state.attacker = sv.st.attacker || null;
+            state.defender = sv.st.defender || null;
+            state.turn = sv.st.turn || 1;
+            state.over = !!sv.st.over;
+            state.players = Array.isArray(sv.players) ? sv.players : [];
+            LOG = Array.isArray(sv.log) ? sv.log : [];
+            pendingTransfer = null;
+            $("transfer-modal").classList.add("hidden");
+            $("transfer-modal").classList.remove("flex");
+            $("inspector-card").classList.add("hidden");
+            if (LOG.length) renderLogFromArray();
+            else $("tab-log").innerHTML = `<div class="text-slate-500 italic text-center py-6">Nog geen wedstrijden gespeeld.</div>`;
+            empireCache.clear();
+            buildGeometry();
+            render();
+            fitToClubs();
+            return true;
+        }
+
+        /** Herstel bij het opstarten: eerst de v2-slots, anders de oude v1-save. */
+        function tryRestore() {
+            const store = readSlots();
+            if (store.active && store.slots[store.active] && applySave(store.slots[store.active], store.active)) return true;
+            let raw = null;
+            try { raw = localStorage.getItem(SAVE_KEY); } catch (err) { return false; }
+            if (!raw) return false;
+            let sv;
+            try { sv = JSON.parse(raw); } catch (err) { return false; }
+            return applySave(sv, sv && sv.preset ? sv.preset : "all");
+        }
+
+        /** Wissel van mode: huidige game blijft bewaard, de gekozen mode wordt hervat of nieuw gestart. */
+        function switchPreset(presetKey) {
+            if (presetKey === lastPreset) return;
+            saveNow();                                   // huidige mode veilig opslaan
+            const sv = readSlots().slots[presetKey];
+            if (sv && applySave(sv, presetKey)) return;  // vorige game van deze mode hervat
+            lastPreset = presetKey;
+            customSource = false;
+            SOURCE_CLUBS = presetClubs(presetKey);
+            startGame(SOURCE_CLUBS);
+        }
+
+
+        function checkVictory(lastWinner) {
+            const remainingClubs = activeRealClubs();
+            const remainingNeutral = activeNeutralZones();
+            if (remainingClubs.length === 1 && remainingNeutral.length === 0) {
+                state.over = true;
+                addLog(`🏆 <b>${esc(lastWinner.name)}</b> HEEFT DE HELE KAART VEROVERD!`);
+                updateUI();
+            }
+        }
+
+        /* ============================================================================
+           8. UI, MODAL & INSPECTOR UPDATES
+           ============================================================================ */
+        function openModal() {
+            if (!state.attacker || !state.defender) return;
+            const att = byId(state.attacker);
+            const def = byId(state.defender);
+            if (!att || !def) return;
+
+            const attTerr = members(att.id).length;
+            const defTerr = members(def.id).length;
+
+            $("modal-att-dot").style.backgroundColor = att.color;
+            $("modal-att-name").textContent = att.name;
+            $("modal-att-meta").textContent = `${attTerr} Regio${attTerr > 1 ? "'s" : ""} • +${att.upgrades} Upgrades`;
+
+            $("modal-def-dot").style.backgroundColor = def.isNeutral ? "#10b981" : def.color;
+            $("modal-def-name").textContent = def.name;
+
+            if (def.isNeutral) {
+                $("modal-badge").innerHTML = `<i class="fa-solid fa-gift"></i> Lege Regio Geloott!`;
+                $("modal-title").textContent = "FREE SQUAD UPGRADE!";
+                $("modal-subtitle").textContent = `${att.name} hoeft geen wedstrijd te spelen en mag direct een speler upgraden!`;
+                $("modal-def-role").textContent = "Neutrale Regio";
+                $("modal-def-role").className = "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-emerald-500 text-slate-950 mb-1.5";
+                $("modal-def-meta").textContent = "Geen Club • Gratis Overname";
+
+                $("modal-club-buttons").classList.add("hidden");
+                $("modal-neutral-buttons").classList.remove("hidden");
+                $("btn-modal-neutral-label").textContent = `${att.name}: Claim Regio + Upgrade!`;
+            } else {
+                $("modal-badge").innerHTML = `<i class="fa-solid fa-fire"></i> EA FC 26 Matchup`;
+                $("modal-title").textContent = "BATTLE!";
+                $("modal-subtitle").textContent = "Speel of simuleer de wedstrijd en klik op de winnende club:";
+                $("modal-def-role").textContent = "Verdediger";
+                $("modal-def-role").className = "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-orange-500 text-white mb-1.5";
+                $("modal-def-meta").textContent = `${defTerr} Regio${defTerr > 1 ? "'s" : ""} • +${def.upgrades} Upgrades`;
+
+                $("modal-club-buttons").classList.remove("hidden");
+                $("modal-neutral-buttons").classList.add("hidden");
+
+                // Dynamic Club Names on Battle Modal Buttons!
+                $("btn-modal-attwin-label").textContent = `${att.name} Won`;
+                $("btn-modal-defwin-label").textContent = `${def.name} Won`;
+            }
+
+            $("battle-modal").classList.remove("hidden");
+            $("battle-modal").classList.add("flex");
+        }
+
+        function closeModal() {
+            $("battle-modal").classList.add("hidden");
+            $("battle-modal").classList.remove("flex");
+        }
+
+        function updateUI() {
+            const realActive = activeRealClubs();
+            const totalReal = TEAMS.filter(t => !t.isNeutral).length;
+            const neutralLeft = activeNeutralZones().length;
+
+            $("stat-clubs").textContent = `${realActive.length} / ${totalReal}`;
+            $("stat-neutral").textContent = `${neutralLeft}`;
+            $("stat-turn").textContent = `#${state.turn}`;
+
+            $("btn-roll-att").disabled = state.over || realActive.length < 1;
+            $("btn-roll-def").disabled = !state.attacker || !!state.defender || state.over;
+            $("btn-resolve").disabled = !state.attacker || !state.defender || state.over;
+
+            if (state.over && realActive.length >= 1) {
+                $("status-message").classList.remove("hidden");
+                $("vs-cards").classList.add("hidden");
+                $("status-message").innerHTML = `👑 <b class="text-amber-400">${esc(realActive[0].name)}</b> heerst over de volledige kaart!`;
+            } else if (!state.attacker) {
+                $("status-message").classList.remove("hidden");
+                $("vs-cards").classList.add("hidden");
+                $("status-message").innerHTML = `Klik op <b class="text-amber-400">1. Roll Attacker</b> of klik een club op de kaart aan.`;
+            } else {
+                $("status-message").classList.add("hidden");
+                $("vs-cards").classList.remove("hidden");
+
+                const att = byId(state.attacker);
+                const attCount = members(att.id).length;
+                $("card-att-name").textContent = att.name;
+                $("card-att-stats").textContent = `${attCount} regio${attCount > 1 ? "'s" : ""} • ★${att.upgrades}`;
+
+                if (!state.defender) {
+                    $("card-def-wrap").classList.add("opacity-50");
+                    $("card-def-name").textContent = "Klik op 2. Roll Defender...";
+                    $("card-def-stats").textContent = "-";
+                    $("inline-battle-actions").classList.add("hidden");
+                    $("inline-upgrade-actions").classList.add("hidden");
+                    $("btn-resolve-text").textContent = "3. Start Battle / Claim";
+                } else {
+                    const def = byId(state.defender);
+                    const defCount = members(def.id).length;
+                    $("card-def-wrap").classList.remove("opacity-50");
+                    $("card-def-name").textContent = def.name;
+
+                    if (def.isNeutral) {
+                        $("card-def-badge").textContent = "FREE";
+                        $("card-def-badge").className = "px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-black text-[10px] uppercase";
+                        $("card-def-stats").textContent = "+1 Upgrade";
+                        $("inline-battle-actions").classList.add("hidden");
+                        $("inline-upgrade-actions").classList.remove("hidden");
+                        $("btn-inline-upgrade-text").textContent = `${att.name}: Claim +1 Upgrade!`;
+                        $("btn-resolve-text").textContent = `3. Claim Upgrade (${att.name})`;
+                    } else {
+                        $("card-def-badge").textContent = "DEF";
+                        $("card-def-badge").className = "px-1.5 py-0.5 rounded bg-orange-500 text-white font-black text-[10px] uppercase";
+                        $("card-def-stats").textContent = `${defCount} regio${defCount > 1 ? "'s" : ""} • ★${def.upgrades}`;
+                        $("inline-upgrade-actions").classList.add("hidden");
+                        $("inline-battle-actions").classList.remove("hidden");
+
+                        // Dynamic Club Names on Inline Buttons too!
+                        $("btn-inline-attwin").textContent = `${att.name} Won`;
+                        $("btn-inline-defwin").textContent = `${def.name} Won`;
+                        $("btn-resolve-text").textContent = "3. Open Battle Scherm";
+                    }
+                }
+            }
+
+            renderLeaderboard();
+        }
+
+        function renderLeaderboard() {
+            const container = $("tab-leaders");
+            const rankings = activeRealClubs()
+                .map(club => ({
+                    ...club,
+                    territories: members(club.id).length
+                }))
+                .sort((a, b) => b.territories - a.territories || b.upgrades - a.upgrades || b.wins - a.wins);
+
+            container.innerHTML = rankings
+                .slice(0, 30)
+                .map((club, idx) => {
+                    const medal =
+                        idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `<span class="text-slate-500">#${idx + 1}</span>`;
+                    return `
+            <div onclick="focusClub('${club.id}')" class="flex items-center justify-between bg-slate-950/70 hover:bg-slate-800/80 border border-slate-800/90 rounded-lg px-2.5 py-1.5 cursor-pointer transition">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-xs font-bold w-5 text-center">${medal}</span>
+                <span class="w-3 h-3 rounded-full shrink-0 border border-white/60" style="background:${club.color}"></span>
+                <span class="text-xs font-bold text-slate-100 truncate">${esc(club.name)}</span>
+              </div>
+              <div class="flex items-center gap-2 text-[11px] font-semibold shrink-0">
+                <span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30" title="Squad Upgrades">★${club.upgrades}</span>
+                <span class="px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/30">${club.territories} regio's</span>
+              </div>
+            </div>
+          `;
+                })
+                .join("");
+        }
+
+        window.focusClub = function (clubId) {
+            const b = boundsOf(clubId);
+            if (b.isValid()) {
+                map.flyToBounds(b, { maxZoom: 7.5, duration: 0.7 });
+            }
+            openInspector(clubId);
+        };
+
+        function openInspector(ownerId) {
+            const owner = byId(ownerId);
+            if (!owner) return;
+            inspectedOwnerId = ownerId;
+            const count = members(ownerId).length;
+
+            $("inspector-card").classList.remove("hidden");
+            $("insp-dot").style.backgroundColor = owner.isNeutral ? "#10b981" : owner.color;
+            $("insp-name").textContent = owner.name;
+
+            if (owner.isNeutral) {
+                $("insp-details").innerHTML = `
+          <div class="text-emerald-400 font-semibold">Lege Neutrale Regio</div>
+          <div>Val deze regio aan voor een <b>Free Squad Upgrade</b> zonder wedstrijd!</div>
+        `;
+                $("btn-force-att").classList.add("hidden");
+            } else {
+                $("insp-details").innerHTML = `
+          <div>Regio's in bezit: <b class="text-white">${count}</b></div>
+          <div>Squad Upgrades: <b class="text-emerald-400">+${owner.upgrades}</b> • Gewonnen Battles: <b class="text-amber-400">${owner.wins}</b></div>
+        `;
+                $("btn-force-att").classList.remove("hidden");
+            }
+        }
+
+        function addLog(html) {
+            LOG.unshift(html);
+            if (LOG.length > 500) LOG.pop();
+            saveGame();
+            const logBox = $("tab-log");
+            if (logBox.querySelector(".italic")) logBox.innerHTML = "";
+            const item = document.createElement("div");
+            item.className = "bg-slate-950/75 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 leading-snug";
+            item.innerHTML = html;
+            logBox.prepend(item);
+        }
+
+        /* ============================================================================
+           9. PRESETS, IMPORT/EXPORT & EVENT LISTENERS
+           ============================================================================ */
+        function presetClubs(presetKey) {
+            let filtered = [...MASTER_CLUBS];
+            if (presetKey === "belgium") {
+                filtered = MASTER_CLUBS.filter(c => c.league === "belgium");
+            } else if (presetKey === "benelux") {
+                filtered = MASTER_CLUBS.filter(c => c.league === "belgium" || c.league === "eredivisie");
+            } else if (presetKey === "uk") {
+                filtered = MASTER_CLUBS.filter(c => c.league === "uk");
+            } else if (presetKey === "europe") {
+                filtered = MASTER_CLUBS.filter(c => c.league !== "world");
+            }
+            return filtered;
+        }
+
+        function loadPreset(presetKey) {
+            lastPreset = presetKey;
+            customSource = false;
+            SOURCE_CLUBS = presetClubs(presetKey);
+            startGame(SOURCE_CLUBS);
+        }
+
+        function startGame(rawClubs) {
+            state.attacker = null;
+            state.defender = null;
+            state.turn = 1;
+            state.over = false;
+            state.players = [];
+            LOG = [];
+            pendingTransfer = null;
+            $("transfer-modal").classList.add("hidden");
+            $("transfer-modal").classList.remove("flex");
+            $("inspector-card").classList.add("hidden");
+            $("tab-log").innerHTML = `<div class="text-slate-500 italic text-center py-6">Nieuwe game gestart.</div>`;
+
+            TEAMS = normalizeAndGenerateTeams(rawClubs);
+            if (TEAMS.length < 3) {
+                $("status-message").textContent = "Minstens 3 geldige teams nodig om een Voronoi-kaart te maken.";
+                return;
+            }
+
+            buildGeometry();
+            render();
+
+            const realClubs = TEAMS.filter(t => !t.isNeutral);
+            const lats = realClubs.map(t => t.lat);
+            const lngs = realClubs.map(t => t.lng);
+            map.fitBounds(
+                [
+                    [Math.min(...lats), Math.min(...lngs)],
+                    [Math.max(...lats), Math.max(...lngs)]
+                ],
+                { padding: [45, 45] }
+            );
+        }
+
+        // Wire UI Buttons
+        $("btn-roll-att").onclick = rollAttacker;
+        $("btn-roll-def").onclick = rollDefender;
+        $("btn-resolve").onclick = openModal;
+
+        $("btn-inline-attwin").onclick = () => resolveBattle(true);
+        $("btn-inline-defwin").onclick = () => resolveBattle(false);
+        $("btn-inline-upgrade").onclick = () => resolveBattle(true);
+
+        $("btn-modal-attwin").onclick = () => resolveBattle(true);
+        $("btn-modal-defwin").onclick = () => resolveBattle(false);
+        $("btn-modal-claim-neutral").onclick = () => resolveBattle(true);
+        $("btn-modal-close").onclick = closeModal;
+
+        $("btn-fit-all").onclick = () => {
+            const realClubs = TEAMS.filter(t => !t.isNeutral);
+            if (!realClubs.length) return;
+            const lats = realClubs.map(t => t.lat);
+            const lngs = realClubs.map(t => t.lng);
+            map.flyToBounds(
+                [
+                    [Math.min(...lats), Math.min(...lngs)],
+                    [Math.max(...lats), Math.max(...lngs)]
+                ],
+                { padding: [50, 50], duration: 0.8 }
+            );
+        };
+
+        $("btn-toggle-theme").onclick = () => {
+            document.body.classList.toggle("dark-tiles");
+            const isDark = document.body.classList.contains("dark-tiles");
+            $("theme-label").textContent = isDark ? "Dark" : "Light";
+        };
+
+        $("preset-select").onchange = e => switchPreset(e.target.value);
+
+        $("chk-neutral").onchange = e => {
+            if (!confirmWipe("Neutrale regio's aan/uit zetten start een nieuwe game in deze mode.")) {
+                e.target.checked = state.enableNeutral;
+                return;
+            }
+            state.enableNeutral = e.target.checked;
+            startGame(SOURCE_CLUBS);
+        };
+
+        $("chk-clip").onchange = e => {
+            state.enableClip = e.target.checked;
+            buildGeometry();
+            render();
+        };
+
+        $("btn-close-insp").onclick = () => $("inspector-card").classList.add("hidden");
+
+        $("btn-force-att").onclick = () => {
+            if (!inspectedOwnerId) return;
+            const owner = byId(inspectedOwnerId);
+            if (!owner || owner.isNeutral) return;
+            state.attacker = inspectedOwnerId;
+            state.defender = null;
+            render();
+        };
+
+        $("btn-force-def").onclick = () => {
+            if (!inspectedOwnerId || inspectedOwnerId === state.attacker) return;
+            state.defender = inspectedOwnerId;
+            render();
+        };
+
+        $("btn-reset-game").onclick = () => {
+            if (!confirm(`Weet je het ZEKER?\n\nDe game van deze mode wordt gereset (andere modes blijven bewaard): de kaart, alle ${state.turn - 1} ronde(s), de historiek en alle ${state.players.length} verhuisde speler(s) worden gewist. Dit kan niet ongedaan gemaakt worden.`)) return;
+            startGame(SOURCE_CLUBS);
+        };
+
+        // Speler-transfer modal
+        $("tr-confirm").onclick = () => {
+            const name = $("tr-name").value.trim();
+            if (!name) {
+                $("tr-err").textContent = "Vul de naam van de speler in, of kies 'Geen speler nemen'.";
+                $("tr-err").classList.remove("hidden");
+                $("tr-name").focus();
+                return;
+            }
+            completeBattle(name, $("tr-note").value.trim());
+        };
+        $("tr-skip").onclick = () => completeBattle(null, "");
+        $("tr-cancel").onclick = closeTransferModal;
+        $("tr-name").onkeydown = e => { if (e.key === "Enter") $("tr-confirm").click(); };
+        $("tr-note").onkeydown = e => { if (e.key === "Enter") $("tr-confirm").click(); };
+        $("pl-filter").oninput = renderPlayers;
+
+        window.addEventListener("pagehide", saveNow);
+        window.addEventListener("beforeunload", saveNow);
+
+        // Tab switching
+        document.querySelectorAll(".tab-btn").forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll(".tab-btn").forEach(b => {
+                    b.className = "tab-btn flex-1 py-2 text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition";
+                });
+                btn.className = "tab-btn flex-1 py-2 text-amber-400 border-b-2 border-amber-400 transition";
+                document.querySelectorAll(".tab-pane").forEach(p => p.classList.add("hidden"));
+                $(btn.dataset.tab).classList.remove("hidden");
+            };
+        });
+
+        // Replace teams via JSON file import
+        $("file-input").onchange = e => {
+            const f = e.target.files[0];
+            if (!f) return;
+            if (!confirmWipe("Een JSON importeren start een nieuwe game in deze mode.")) { e.target.value = ""; return; }
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const parsed = JSON.parse(reader.result);
+                    const list = Array.isArray(parsed) ? parsed : parsed.teams;
+                    if (!Array.isArray(list)) throw new Error("JSON moet een array van clubs zijn.");
+                    SOURCE_CLUBS = list;
+                    customSource = true;
+                    startGame(SOURCE_CLUBS);
+                } catch (err) {
+                    $("status-message").textContent = "Import mislukt: " + err.message;
+                }
+            };
+            reader.readAsText(f);
+            e.target.value = "";
+        };
+
+        // Merge JSON file into existing clubs
+        $("btn-add-json-teams").onclick = () => $("file-merge-input").click();
+        $("file-merge-input").onchange = e => {
+            const f = e.target.files[0];
+            if (!f) return;
+            if (!confirmWipe("JSON samenvoegen start een nieuwe game in deze mode.")) { e.target.value = ""; return; }
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const parsed = JSON.parse(reader.result);
+                    const list = Array.isArray(parsed) ? parsed : parsed.teams;
+                    if (!Array.isArray(list)) throw new Error("JSON moet een array van clubs zijn.");
+                    SOURCE_CLUBS = [...SOURCE_CLUBS, ...list];
+                    customSource = true;
+                    startGame(SOURCE_CLUBS);
+                } catch (err) {
+                    $("status-message").textContent = "Samenvoegen mislukt: " + err.message;
+                }
+            };
+            reader.readAsText(f);
+            e.target.value = "";
+        };
+
+        // Export current real clubs to JSON
+        $("btn-export-json").onclick = () => {
+            const cleanList = TEAMS.filter(t => !t.isNeutral).map(t => ({
+                id: t.id,
+                name: t.name,
+                lat: t.lat,
+                lng: t.lng,
+                color: t.color
+            }));
+            const blob = new Blob([JSON.stringify(cleanList, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "ea_fc26_imperialism_teams.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        /* ============================================================================
+           10. INITIALIZATION & REAL WORLD BORDERS FETCH
+           ============================================================================ */
+        (async function init() {
+            await loadClubsFromJson();
+            updatePresetLabels();
+            buildCompassFace();
+            // Opgeslagen game herstellen (Ctrl+F5 houdt je voortgang), anders nieuwe game starten
+            if (!tryRestore()) loadPreset("all");
+            saveEnabled = true;
+            saveGame();
+
+            // Fetch real world/country borders GeoJSON in the background for coastline/border clipping
+            try {
+                const res = await fetch(
+                    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
+                );
+                if (res.ok) {
+                    landmassGeoJSON = await res.json();
+                    // Re-run with clipped country shapes (maar nooit een lopende game wissen)
+                    if (hasProgress()) {
+                        buildGeometry();
+                        render();
+                    } else {
+                        startGame(SOURCE_CLUBS);
+                    }
+                }
+            } catch (err) {
+                console.warn("Kon wereldgrenzen niet ophalen, gebruikt standaard Voronoi-grenzen.", err);
+            }
+        })();
+    </script>
+</body>
+
+</html>
