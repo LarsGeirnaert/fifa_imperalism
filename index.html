@@ -1312,6 +1312,24 @@
                 const R = r0, partial = r0 < Rfull;
                 const legsFor = r => r === Rfull ? (ph.cfg.finalTwoLegged ? 2 : 1) : (ph.cfg.twoLegged ? 2 : 1);
                 ph.ties = []; ph.matches = [];
+                if (partial) {
+                    /* Beperkt aantal rondes: elke ronde halveert het aantal teams (oneven aantal = beste team krijgt vrijstelling).
+                       60 teams en 2 rondes -> 30 -> 15 teams. */
+                    let slots = ids.map(team => ({ team }));
+                    for (let r = 1; r <= R; r++) {
+                        const m = slots.length, list = slots.slice(), cur = [];
+                        const byeSlot = m % 2 ? list.shift() : null;
+                        const nmr = m === 2 ? "Finale" : m === 4 ? "Halve finale" : m === 8 ? "Kwartfinale" : m === 16 ? "Achtste finale" : m === 32 ? "Zestiende finale" : "Ronde " + r;
+                        let k = 0;
+                        if (byeSlot) { cur.push({ id: `k${r}_${k}`, round: r, idx: k, name: nmr, a: byeSlot, b: { team: null }, bye: true, legs: 1, matchIds: [] }); k++; }
+                        for (let i = 0; i < list.length / 2; i++, k++) cur.push({ id: `k${r}_${k}`, round: r, idx: k, name: nmr, a: list[i], b: list[list.length - 1 - i], bye: false, legs: legsFor(r), matchIds: [] });
+                        ph.ties.push(...cur);
+                        slots = cur.map(x => ({ from: x.id }));
+                    }
+                    ph.rounds = R; ph.partial = true;
+                    syncKnockout(t, ph);
+                    return;
+                }
                 let prev = [];
                 for (let i = 0; i < size / 2; i++) {
                     const A = ids[order[2 * i] - 1] || null, B = ids[order[2 * i + 1] - 1] || null;
@@ -1707,7 +1725,7 @@
                         let r0 = p.cfg.rounds ? Math.floor(+p.cfg.rounds) : R;
                         if (!(r0 >= 1)) r0 = R;
                         if (r0 > R) { errors.push(`${nm}: ${r0} rondes kan niet met ${cnt} teams (max ${R}).`); r0 = R; }
-                        remain = size / Math.pow(2, r0);
+                        remain = Math.ceil(cnt / Math.pow(2, r0));
                         const third = (r0 === R && p.cfg.thirdPlace && cnt >= 4) ? 1 : 0;
                         matches = (cnt - remain + third) * (p.cfg.twoLegged ? 2 : 1);
                     }
