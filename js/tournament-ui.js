@@ -7,6 +7,7 @@ const TUI = (() => {
     let DB = { items: [] };
     let UI = { screen: "list", tid: null, tab: "overview", sub: "table", team: "" };
     let W = null;
+    let GS = { tab: "overview", scope: "all", sort: "winp", dir: 1, min: 1, team: "", a: "", b: "" };
     let TM = new Map();
 
     const root = () => document.getElementById("trn-root");
@@ -56,6 +57,7 @@ const TUI = (() => {
         let html = "";
         if (UI.screen === "list") html = listScreen();
         else if (UI.screen === "wizard") html = wizardScreen();
+        else if (UI.screen === "gstats") html = gstatsScreen();
         else { const t = cur(); if (!t) { UI.screen = "list"; html = listScreen(); } else { setTM(t); html = viewScreen(t); } }
         r.innerHTML = html;
         if (UI.screen === "wizard") { refreshPicker(); refreshPlan(); }
@@ -71,6 +73,7 @@ const TUI = (() => {
     function listScreen() {
         const items = [...DB.items].sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
         let h = topbar("Toernooien", `<label class="btn btn-sky cursor-pointer"><i class="fa-solid fa-file-import mr-1"></i>Importeer<input id="trn-import" type="file" accept="application/json,.json" class="hidden"></label>
+    <button data-a="gstats" class="btn btn-sky"><i class="fa-solid fa-chart-column mr-1"></i>Statistieken</button>
     <button data-a="new" class="btn btn-gold"><i class="fa-solid fa-plus mr-1"></i>Nieuw toernooi</button>`);
         h += `<div class="max-w-3xl mx-auto p-3 space-y-3">`;
         if (!items.length) h += `<div class="card text-center py-10"><div class="text-amber-400 text-3xl mb-2"><i class="fa-solid fa-trophy"></i></div><div class="text-white font-bold">Nog geen toernooien</div><p class="text-xs text-slate-400 mt-1">Maak je eerste toernooi: kies teams en een formaat.</p><button data-a="new" class="btn btn-gold mt-4">Nieuw toernooi</button></div>`;
@@ -86,6 +89,14 @@ const TUI = (() => {
         <button data-a="del-t" data-id="${t.id}" class="btn btn-red"><i class="fa-solid fa-trash mr-1"></i>Verwijder</button></div></div>`;
         }
         return h + `<p class="text-[10px] text-slate-500 text-center pt-2">Toernooien staan in de browser van dit toestel. Exporteer af en toe een bestand als back-up.</p></div>`;
+    }
+
+    /* ---------- statistieken over alle toernooien ---------- */
+    function gstatsScreen() {
+        if (GS.scope !== "all" && !DB.items.some(t => t.id === GS.scope)) GS.scope = "all";
+        const D = TStats.build(DB.items, GS.scope, pool());
+        return topbar("Statistieken", `<button data-a="list" class="btn"><i class="fa-solid fa-arrow-left mr-1"></i>Toernooien</button>`)
+            + `<div class="max-w-5xl mx-auto p-3 space-y-3">${TStats.html(D, GS, esc, DB.items.map(t => ({ id: t.id, name: t.name })))}</div>`;
     }
 
     /* ---------- wizard ---------- */
@@ -614,6 +625,10 @@ ${extraStatsHTML(ms)}
             case "new": newWizard(); UI.screen = "wizard"; render(true); break;
             case "cancel-w": W = null; UI.screen = "list"; render(); break;
             case "list": UI.screen = "list"; render(); break;
+            case "gstats": UI.screen = "gstats"; render(true); break;
+            case "gs-tab": GS.tab = b.dataset.v; render(); break;
+            case "gs-sort": if (GS.sort === b.dataset.v) GS.dir = -GS.dir; else { GS.sort = b.dataset.v; GS.dir = b.dataset.v === "gapg" || b.dataset.v === "l" ? -1 : 1; } render(); break;
+            case "gs-team": GS.team = b.dataset.id; GS.tab = "team"; render(true); break;
             case "open": UI = { screen: "view", tid: b.dataset.id, tab: "overview", sub: "table", team: "" }; { const x = cur(); if (x) { const act = x.phases.findIndex(p => p.status === "active"); if (act >= 0) UI.tab = "p" + act; } } render(true); break;
             case "tab": UI.tab = b.dataset.v; UI.team = ""; UI.simEx = []; render(); break;
             case "sim-next": simNextUI(); break;
@@ -715,7 +730,8 @@ ${extraStatsHTML(ms)}
             rd.readAsText(f); return;
         }
         const c = el.dataset.c;
-        if (c === "team") { UI.team = el.value; render(); }
+        if (c === "gs") { GS[el.dataset.k] = el.value; render(); }
+        else if (c === "team") { UI.team = el.value; render(); }
         else if (c === "onlyopen") { UI.onlyOpen = el.checked; render(); }
         else if (c === "pens") {
             const t = cur(), idx = phaseIdx(); if (!t) return;
