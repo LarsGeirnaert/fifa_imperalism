@@ -101,7 +101,7 @@ const TUI = (() => {
 
     /* ---------- wizard ---------- */
     function newWizard() {
-        W = { name: "", teams: [], tpl: "league1", dirty: false, rules: { win: 3, draw: 1, loss: 0, tiebreak: "gd" }, q: "", lg: "all", cn: 0, sort: "default", phases: [] };
+        W = { name: "", teams: [], tpl: "league1", dirty: false, rules: { win: 3, draw: 1, loss: 0, tiebreak: "gd" }, sim: { model: "new", ...E.SIM_DEF }, q: "", lg: "all", cn: 0, sort: "default", phases: [] };
         W.phases = E.template("league1", 16);
     }
     function reapplyTpl() { if (W.tpl !== "custom" && !W.dirty) W.phases = E.template(W.tpl, W.teams.length || 16); }
@@ -156,6 +156,8 @@ const TUI = (() => {
       <div><span class="lbl">Verlies</span><input data-c="rule" data-k="loss" data-t="n" type="number" class="inp" value="${W.rules.loss}"></div>
       <div><span class="lbl">Bij gelijke punten</span><select data-c="rule" data-k="tiebreak" class="inp"><option value="gd" ${W.rules.tiebreak === "gd" ? "selected" : ""}>Doelsaldo</option><option value="h2h" ${W.rules.tiebreak === "h2h" ? "selected" : ""}>Onderling resultaat</option></select></div>
     </div></div>
+
+<div class="card"><span class="lbl">5. Simulatie</span>${simSettingsHTML(W.sim, W.sim.model, 'data-c="wsim"')}</div>
 
 <div class="card"><div id="w-summary"></div></div></div>`;
     }
@@ -252,7 +254,7 @@ const TUI = (() => {
         const pl = E.plan(W.phases, W.teams.length);
         if (pl.errors.length || W.teams.length < 2 || !W.name.trim()) return;
         try {
-            const t = E.create(W.name.trim(), W.teams, W.phases, W.rules);
+            const t = E.create(W.name.trim(), W.teams, W.phases, W.rules, W.sim.model === "new" ? { k: W.sim.k, chaos: W.sim.chaos, home: W.sim.home } : undefined);
             DB.items.push(t); UI = { screen: "view", tid: t.id, tab: "p0", sub: "table", team: "" };
             persist(); W = null; render(true);
         } catch (e) { say("⚠️ " + e.message, 7000); }
@@ -316,20 +318,48 @@ const TUI = (() => {
         const n = (UI.simEx || []).length;
         return n ? `Simuleer alles behalve ${n} geselecteerd${n === 1 ? " team" : "e teams"}` : "Simuleer alles behalve… (selecteer eerst teams)";
     }
+    /* Simulatie-instellingen (wizard en bestaand toernooi): model, Elo-aanpassing, chaos, thuisvoordeel */
+    function simSettingsHTML(cfg, model, attr) {
+        const nw = model === "new", f = (l, k, v, step, hint) => `<div><span class="lbl">${l}</span><input ${attr} data-k="${k}" type="number" step="${step}" class="inp" value="${v}" ${nw ? "" : "disabled"} title="${hint}"></div>`;
+        return `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+      <div><span class="lbl">Model</span><select ${attr} data-k="model" class="inp"><option value="new" ${nw ? "selected" : ""}>Realistisch (nieuw)</option><option value="classic" ${nw ? "" : "selected"}>Klassiek (alleen Elo)</option></select></div>
+      ${f("Elo-aanpassing (K)", "k", cfg.k, 1, "0 = Elo blijft gelijk. Hoger = Elo beweegt sneller mee met de uitslagen in dit toernooi.")}
+      ${f("Chaos-factor", "chaos", cfg.chaos, 0.1, "0 = alles is een muntworp, 1 = normaal, 2 = favorieten winnen bijna altijd.")}
+      ${f("Thuisvoordeel (Elo)", "home", cfg.home, 5, "Bonus voor de thuisploeg in Elo-punten. 0 = uit. Geldt niet voor een knock-outwedstrijd op neutraal veld.")}
+    </div><div class="text-[10px] text-slate-500 mt-1.5">${nw ? "Elo past alleen binnen dit toernooi aan (begin-Elo en andere toernooien blijven ongemoeid). Realistischere uitslagen: ~2,7 goals per wedstrijd en meer gelijke spelen." : "Vast model zoals eerst: Elo verandert niet en er is geen thuisvoordeel."}</div>`;
+    }
     function simHTML(t, idx) {
         const p = t.phases[idx];
         if (p.status !== "active") return "";
         const ex = new Set(UI.simEx || []);
-        const chips = p.entrants.map(id => `<button data-a="sim-toggle" data-id="${esc(id)}" class="chip ${ex.has(id) ? "on" : ""}">${dot(id)}${esc(nm(id))}</button>`).join("");
+        const order = (p.type === "league" || p.type === "swiss") ? E.phaseTable(t, p).map(r => r.id) : p.entrants;
+        const chips = order.map((id, i) => `<button data-a="sim-toggle" data-id="${esc(id)}" class="chip ${ex.has(id) ? "on" : ""}"><span class="text-slate-500 text-[10px] mr-1">${i + 1}</span>${dot(id)}${esc(nm(id))}</button>`).join("");
+        const pick = !!UI.simPick, nEx = ex.size;
         return `<div class="card space-y-2.5"><span class="lbl !mb-0"><i class="fa-solid fa-dice mr-1 text-amber-300"></i>Simuleren</span>
-            <div class="text-[11px] text-slate-400 -mt-1">Uitslagen worden vooral bepaald door de <b class="text-amber-300">Elo</b> van beide teams: een sterker team scoort gemiddeld meer, maar een verrassing blijft mogelijk.</div>
+            <div class="text-[11px] text-slate-400 -mt-1">Uitslagen worden vooral bepaald door de <b class="text-amber-300">Elo</b> van beide teams: een sterker team scoort gemiddeld meer, maar een verrassing blijft mogelijk.${t.sim ? " De Elo beweegt mee met de uitslagen in dit toernooi." : ""}</div>
+            <details class="rounded-lg border border-slate-800 bg-slate-950/40 p-2"><summary class="text-[11px] font-bold text-slate-300 cursor-pointer">Simulatie-instellingen</summary><div class="mt-2">${simSettingsHTML(E.simCfg(t) || E.SIM_DEF, t.sim ? "new" : "classic", 'data-c="tsim"')}</div></details>
             <div class="flex flex-wrap gap-2"><button data-a="sim-next" class="btn btn-sky"><i class="fa-solid fa-forward-step mr-1"></i>Simuleer volgende wedstrijd</button>
+            <button data-a="sim-round" class="btn btn-sky"><i class="fa-solid fa-forward mr-1"></i>Simuleer volgende ronde</button>
             <button data-a="sim-all" class="btn btn-green"><i class="fa-solid fa-forward-fast mr-1"></i>Simuleer alles</button></div>
-            <div><span class="lbl">Teams die je zelf speelt (hun wedstrijden worden overgeslagen)</span>
-            <div class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">${chips}</div>
-            <div class="flex flex-wrap gap-2 mt-2"><button id="sim-ex-btn" data-a="sim-ex" class="btn btn-gold">${simLabel()}</button><button data-a="sim-clear" class="btn">Selectie wissen</button></div></div></div>`;
+            <div class="flex flex-wrap gap-2"><button data-a="sim-pick" class="btn ${pick ? "btn-gold" : ""}"><i class="fa-solid fa-hand-pointer mr-1"></i>${pick ? "Sluit selectie" : "Selecteer de ploegen die niet gesimuleerd mogen worden"}${!pick && nEx ? ` (${nEx})` : ""}</button>
+            ${!pick && nEx ? `<button id="sim-ex-btn" data-a="sim-ex" class="btn btn-gold">${simLabel()}</button><button data-a="sim-clear" class="btn">Selectie wissen</button>` : ""}</div>
+            ${pick ? `<div class="space-y-2"><div class="text-[11px] text-slate-400">Klik de teams aan die je zelf speelt: hun wedstrijden worden overgeslagen. De lijst staat op volgorde van de huidige stand.</div>
+            <div class="flex flex-wrap items-center gap-2"><span class="text-[11px] text-slate-400">Snel:</span> bovenste <input id="sim-topn" type="number" min="1" max="${p.entrants.length}" value="${Math.min(3, p.entrants.length)}" class="inp !w-16 !py-1"> <button data-a="sim-top" class="btn">Selecteer</button></div>
+            ${p.type !== "knockout" ? `<div class="flex flex-wrap items-center gap-2"><span class="text-[11px] text-slate-400">Of:</span> teams die nog in de top <input id="sim-cann" type="number" min="1" max="${p.entrants.length}" value="${Math.min(3, p.entrants.length)}" class="inp !w-16 !py-1"> kunnen komen${p.type === "groups" ? " (per groep)" : ""} <button data-a="sim-can" class="btn">Selecteer</button></div>` : ""}
+            <div class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">${chips}</div>
+            <div class="flex flex-wrap gap-2"><button id="sim-ex-btn" data-a="sim-ex" class="btn btn-gold">${simLabel()}</button><button data-a="sim-clear" class="btn">Selectie wissen</button></div></div>` : ""}</div>`;
     }
     function refreshSimBtn() { const b = g("sim-ex-btn"); if (b) b.textContent = simLabel(); }
+    function simRoundUI() {
+        const t = cur(), idx = phaseIdx(); if (!t || idx < 0) return;
+        const ph = t.phases[idx]; if (ph.status !== "active") { say("Deze fase is al klaar."); return; }
+        const r = E.simRound(t, idx);
+        if (!r) { say("Geen wedstrijden meer om te simuleren."); return; }
+        persist(); render();
+        let msg = r.label ? `${r.label} gesimuleerd (${r.n} wedstrijd${r.n === 1 ? "" : "en"})` : "Strafschoppen gesimuleerd";
+        if (ph.status === "done") msg += ` • ${ph.name} is klaar!`;
+        say(msg, 4000);
+    }
     function simNextUI() {
         const t = cur(), idx = phaseIdx(); if (!t || idx < 0) return;
         const ph = t.phases[idx]; if (ph.status !== "active") { say("Deze fase is al klaar."); return; }
@@ -553,6 +583,54 @@ const TUI = (() => {
             + `</div>`;
         return h;
     }
+    /* ---------- stand-geschiedenis (competitie / league phase) ---------- */
+    let HS = { ph: -1, day: -1, top: 0 };
+    function histHTML(t) {
+        const phs = t.phases.map((p, i) => [p, i]).filter(([p]) => (p.type === "league" || p.type === "swiss") && p.entrants && p.matches.some(m => m.h != null));
+        if (!phs.length) return "";
+        if (!phs.some(x => x[1] === HS.ph)) { HS.ph = phs[phs.length - 1][1]; HS.day = -1; }
+        const p = t.phases[HS.ph], H = E.standingsHistory(t, p);
+        if (!H.length) return "";
+        const di = HS.day < 0 || HS.day >= H.length ? H.length - 1 : HS.day;
+        const cur = H[di], prev = di > 0 ? H[di - 1] : null;
+        const prevPos = new Map(prev ? prev.rows.map((r, i) => [r.id, i + 1]) : []);
+        const N = cur.rows.length, top = HS.top > 0 && HS.top < N ? HS.top : 0, shown = top ? cur.rows.slice(0, top) : cur.rows;
+        const btn = (v, ic, dis) => `<button data-a="hs-step" data-v="${v}" class="btn" ${dis ? "disabled" : ""}><i class="fa-solid ${ic}"></i></button>`;
+        const phSel = phs.length > 1 ? `<select data-c="hsph" class="inp !w-auto">${phs.map(([q, i]) => `<option value="${i}" ${i === HS.ph ? "selected" : ""}>${esc(q.name)}</option>`).join("")}</select>` : `<span class="text-xs font-bold text-white">${esc(p.name)}</span>`;
+        let h = `<div class="text-[10px] uppercase tracking-widest text-amber-300 font-black pt-2">Stand-geschiedenis</div>
+<div class="card space-y-2.5"><div class="flex flex-wrap items-center gap-2">${phSel}<div class="flex items-center gap-1.5 ml-auto">${btn("first", "fa-backward-fast", di === 0)}${btn("-1", "fa-backward-step", di === 0)}<span class="font-broadcast text-lg font-extrabold text-amber-300 w-28 text-center">Speeldag ${cur.day}</span>${btn("1", "fa-forward-step", di === H.length - 1)}${btn("last", "fa-forward-fast", di === H.length - 1)}</div></div>
+<div class="flex flex-wrap items-end gap-3"><div><span class="lbl">Ga naar speeldag</span><input data-c="hsdaynum" type="number" min="${H[0].day}" max="${H[H.length - 1].day}" value="${cur.day}" class="inp !w-24"></div>
+<div><span class="lbl">Toon top</span><input data-c="hstop" type="number" min="1" max="${N}" value="${top || ""}" placeholder="alle ${N}" class="inp !w-24"></div>
+${top ? `<button data-a="hs-alltop" class="btn">Toon iedereen</button>` : ""}
+<div class="flex gap-1.5 pb-0.5">${[3, 5, 10].filter(v => v < N).map(v => `<button data-a="hs-settop" data-v="${v}" class="btn ${top === v ? "btn-gold" : ""}">Top ${v}</button>`).join("")}</div></div>
+<input data-c="hsday" type="range" min="0" max="${H.length - 1}" value="${di}" class="w-full accent-amber-400">
+<div class="text-[11px] text-slate-400">${cur.played < cur.total ? `Speeldag ${cur.day} is nog niet af: ${cur.played} van ${cur.total} wedstrijden gespeeld. ` : ""}Stand na speeldag ${cur.day} van ${H[H.length - 1].day} (alleen gespeelde wedstrijden)${top ? `, enkel de top ${top} van die speeldag` : ""}. Pijltjes tonen de verandering t.o.v. ${prev ? "speeldag " + prev.day : "de start"}.</div>
+<div class="overflow-x-auto"><table class="w-full text-xs"><thead><tr class="text-slate-400 uppercase text-[10px]"><th>#</th><th>+/−</th><th class="l">Team</th><th>G</th><th>W</th><th>GL</th><th>V</th><th>DP</th><th>DS</th><th>PT</th></tr></thead><tbody>${shown.map((r, i) => {
+            const pp = prevPos.get(r.id), d = pp ? pp - (i + 1) : 0;
+            const ch = !prev ? "" : d > 0 ? `<span class="text-emerald-300 font-bold">▲${d}</span>` : d < 0 ? `<span class="text-red-300 font-bold">▼${-d}</span>` : `<span class="text-slate-500">–</span>`;
+            return `<tr class="border-t border-slate-800/70"><td class="text-slate-400">${i + 1}</td><td>${ch}</td><td class="l text-slate-100 font-semibold">${teamHtml(r.id)}</td><td>${r.p}</td><td>${r.w}</td><td>${r.d}</td><td>${r.l}</td><td class="text-slate-300">${r.gf}-${r.ga}</td><td class="${r.gd >= 0 ? "text-emerald-300" : "text-red-300"}">${r.gd > 0 ? "+" : ""}${r.gd}</td><td class="font-black text-white">${r.pts}</td></tr>`;
+        }).join("")}</tbody></table></div>`;
+        if (H.length > 1) {
+            const W = 640, HH = Math.max(180, Math.min(440, N * 14)), pl = 26, pr = (N <= 20 || top) ? 120 : 12, pt = 8, pb = 20;
+            const x = i => pl + (i / (H.length - 1)) * (W - pl - pr);
+            const y = pos => pt + ((pos - 1) / Math.max(1, N - 1)) * (HH - pt - pb);
+            const posMaps = H.map(hh => new Map(hh.rows.map((r, i) => [r.id, i + 1])));
+            const lines = shown.map(r => {
+                const col = esc((TM.get(r.id) || {}).color || "#64748b");
+                const pts = H.map((hh, i) => x(i).toFixed(1) + "," + y(posMaps[i].get(r.id)).toFixed(1)).join(" ");
+                return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.6" stroke-linejoin="round" opacity=".85"><title>${esc(nm(r.id))}</title></polyline>`;
+            }).join("");
+            const labels = (N <= 20 || top) ? shown.map(r => `<text x="${x(H.length - 1) + 5}" y="${y(posMaps[H.length - 1].get(r.id)) + 3}" font-size="9" fill="${esc((TM.get(r.id) || {}).color || "#94a3b8")}">${esc(nm(r.id).slice(0, 18))}</text>`).join("") : "";
+            const grid = [1, Math.ceil(N / 2), N].filter((v, i, a) => a.indexOf(v) === i).map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}" stroke="#334155" stroke-width=".6" stroke-dasharray="3 3"/><text x="${pl - 5}" y="${y(v) + 3}" font-size="9" text-anchor="end" fill="#94a3b8">${v}</text>`).join("");
+            const ticks = H.map((hh, i) => (i === 0 || i === H.length - 1 || H.length <= 12 || i % 5 === 0) ? `<text x="${x(i)}" y="${HH - 6}" font-size="9" text-anchor="middle" fill="#94a3b8">${hh.day}</text>` : "").join("");
+            h += `<div><span class="lbl">Positie per speeldag</span><div class="overflow-x-auto"><svg viewBox="0 0 ${W} ${HH}" class="w-full min-w-[480px]" style="height:auto">${grid}<line x1="${x(di)}" x2="${x(di)}" y1="${pt}" y2="${HH - pb}" stroke="#fbbf24" stroke-width="1.2"/>${lines}${labels}${ticks}</svg></div></div>`;
+        }
+        return h + `</div>`;
+    }
+    function eloHTML(t) {
+        const rows = E.eloTable(t); if (!rows.length || rows.every(r => r.diff === 0)) return "";
+        return `<div class="card"><span class="lbl"><i class="fa-solid fa-chart-line mr-1 text-amber-300"></i>Elo-ontwikkeling (alleen binnen dit toernooi)</span><div class="grid sm:grid-cols-2 gap-x-6">${rows.map(r => `<div class="flex items-center justify-between gap-2 py-0.5 text-xs"><span class="truncate text-slate-200">${teamHtml(r.id)}</span><span class="whitespace-nowrap text-slate-400">${r.start} → <b class="text-white">${r.now}</b> <span class="${r.diff > 0 ? "text-emerald-300" : r.diff < 0 ? "text-red-300" : "text-slate-500"} font-bold">${r.diff > 0 ? "+" : ""}${r.diff}</span></span></div>`).join("")}</div></div>`;
+    }
     function statsHTML(t) {
         const o = E.overallStats(t), ms = o.matches;
         if (!ms.length) return `<div class="card text-center text-slate-500 italic py-8">Nog geen wedstrijden gespeeld.</div>`;
@@ -565,6 +643,8 @@ const TUI = (() => {
 <div class="grid md:grid-cols-3 gap-3">${top("Meeste goals gemaakt", [...pl].sort((a, b) => b.gf - a.gf), r => r.gf)}${top("Minste tegendoelpunten", [...pl].sort((a, b) => a.ga / a.p - b.ga / b.p), r => r.ga)}${top("Meeste winsten", [...pl].sort((a, b) => b.w - a.w), r => r.w)}</div>
 <div class="grid md:grid-cols-2 gap-3"><div class="card"><span class="lbl">Grootste overwinningen</span>${[...ms].sort((a, b) => Math.abs(b.h - b.a) - Math.abs(a.h - a.a) || (b.h + b.a) - (a.h + a.a)).slice(0, 5).map(line).join("")}</div>
 <div class="card"><span class="lbl">Meeste doelpunten</span>${[...ms].sort((a, b) => (b.h + b.a) - (a.h + a.a)).slice(0, 5).map(line).join("")}</div></div>
+${histHTML(t)}
+${eloHTML(t)}
 ${extraStatsHTML(ms)}
 <button data-a="csv" class="btn"><i class="fa-solid fa-file-csv mr-1"></i>Exporteer wedstrijden (CSV)</button>`;
     }
@@ -630,16 +710,38 @@ ${extraStatsHTML(ms)}
             case "gs-sort": if (GS.sort === b.dataset.v) GS.dir = -GS.dir; else { GS.sort = b.dataset.v; GS.dir = b.dataset.v === "gapg" || b.dataset.v === "l" ? -1 : 1; } render(); break;
             case "gs-team": GS.team = b.dataset.id; GS.tab = "team"; render(true); break;
             case "open": UI = { screen: "view", tid: b.dataset.id, tab: "overview", sub: "table", team: "" }; { const x = cur(); if (x) { const act = x.phases.findIndex(p => p.status === "active"); if (act >= 0) UI.tab = "p" + act; } } render(true); break;
-            case "tab": UI.tab = b.dataset.v; UI.team = ""; UI.simEx = []; render(); break;
+            case "tab": UI.tab = b.dataset.v; UI.team = ""; UI.simEx = []; UI.simPick = false; render(); break;
             case "sim-next": simNextUI(); break;
+            case "sim-round": simRoundUI(); break;
+            case "hs-settop": HS.top = +b.dataset.v; render(); break;
+            case "hs-alltop": HS.top = 0; render(); break;
+            case "hs-step": {
+                const x = t && t.phases[HS.ph] ? E.standingsHistory(t, t.phases[HS.ph]) : [], last = x.length - 1;
+                let d = HS.day < 0 || HS.day > last ? last : HS.day;
+                const v = b.dataset.v; d = v === "first" ? 0 : v === "last" ? last : Math.max(0, Math.min(last, d + +v));
+                HS.day = d; render(); break;
+            }
             case "sim-all": simAllUI(false); break;
+            case "sim-pick": UI.simPick = !UI.simPick; render(); break;
+            case "sim-top": {
+                const t = cur(), idx = phaseIdx(); if (!t || idx < 0) break;
+                const p = t.phases[idx], order = (p.type === "league" || p.type === "swiss") ? E.phaseTable(t, p).map(r => r.id) : p.entrants;
+                const n = Math.max(0, Math.min(order.length, parseInt((g("sim-topn") || {}).value, 10) || 0));
+                UI.simEx = order.slice(0, n); render(); break;
+            }
+            case "sim-can": {
+                const t = cur(), idx = phaseIdx(); if (!t || idx < 0) break;
+                const n = Math.max(1, parseInt((g("sim-cann") || {}).value, 10) || 1);
+                UI.simEx = E.canReachTop(t, idx, n); render();
+                say(UI.simEx.length ? `${UI.simEx.length} team${UI.simEx.length === 1 ? "" : "s"} kunnen nog in de top ${n} komen` : `Geen enkel team kan nog in de top ${n} komen`, 4000); break;
+            }
             case "sim-ex": simAllUI(true); break;
             case "sim-toggle": {
                 const id = b.dataset.id, s = new Set(UI.simEx || []);
                 if (s.has(id)) s.delete(id); else s.add(id);
                 UI.simEx = [...s]; b.classList.toggle("on", s.has(id)); refreshSimBtn(); break;
             }
-            case "sim-clear": UI.simEx = []; root().querySelectorAll('[data-a="sim-toggle"]').forEach(c => c.classList.remove("on")); refreshSimBtn(); break;
+            case "sim-clear": UI.simEx = []; if (UI.simPick) { root().querySelectorAll('[data-a="sim-toggle"]').forEach(c => c.classList.remove("on")); refreshSimBtn(); } else render(); break;
             case "sub": UI.sub = b.dataset.v; render(); break;
             case "start-ph": startPhase(+b.dataset.i); break;
             case "redraw": { const i = +b.dataset.i; if (E.played(t.phases[i])) { say("Er zijn al wedstrijden gespeeld."); break; } startPhase(i, true); break; }
@@ -732,6 +834,16 @@ ${extraStatsHTML(ms)}
         const c = el.dataset.c;
         if (c === "gs") { GS[el.dataset.k] = el.value; render(); }
         else if (c === "team") { UI.team = el.value; render(); }
+        else if (c === "hsph") { HS.ph = +el.value; HS.day = -1; render(); }
+        else if (c === "hsday") { HS.day = +el.value; render(); }
+        else if (c === "hsdaynum") {
+            const t = cur(), x = t && t.phases[HS.ph] ? E.standingsHistory(t, t.phases[HS.ph]) : []; if (!x.length) return;
+            const v = parseInt(el.value, 10); if (isNaN(v)) return;
+            let k = x.findIndex(y => y.day === v);
+            if (k < 0) k = v < x[0].day ? 0 : x.length - 1;
+            HS.day = k; render();
+        }
+        else if (c === "hstop") { const v = parseInt(el.value, 10); HS.top = v > 0 ? v : 0; render(); }
         else if (c === "onlyopen") { UI.onlyOpen = el.checked; render(); }
         else if (c === "pens") {
             const t = cur(), idx = phaseIdx(); if (!t) return;
@@ -739,6 +851,15 @@ ${extraStatsHTML(ms)}
             const before = t.phases[idx].status;
             E.setPens(t, idx, el.dataset.tie, el.value); afterChange(idx);
             if (before !== "done" && t.phases[idx].status === "done") say(`✓ ${t.phases[idx].name} is klaar!`, 4000);
+        }
+        else if (c === "wsim") { const k = el.dataset.k; if (k === "model") { W.sim.model = el.value; render(); } else W.sim[k] = Number(el.value) || 0; }
+        else if (c === "tsim") {
+            const t = cur(); if (!t) return;
+            const k = el.dataset.k;
+            if (k === "model") t.sim = el.value === "new" ? { ...E.SIM_DEF } : undefined;
+            else if (t.sim) t.sim[k] = Number(el.value) || 0;
+            if (!t.sim) delete t.sim;
+            persist(); render();
         }
         else if (c === "rule") { W.rules[el.dataset.k] = el.dataset.t === "n" ? (parseInt(el.value, 10) || 0) : el.value; }
         else if (c === "ph") {

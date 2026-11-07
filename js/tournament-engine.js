@@ -396,9 +396,9 @@ const TEngine = (() => {
     function poisson(l) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= rnd(); } while (p > L); return k - 1; }
     const randGoals = () => Math.min(9, poisson(1.4));
     /* ---------- Elo-gebaseerde simulatie ---------- */
-    /* Elo per team: eerst uit het toernooi zelf, anders uit de clublijst (oudere opgeslagen toernooien hebben nog geen Elo). */
+    /* Elo per team: eerst uit het toernooi zelf, anders uit de clublijst (oudere opgeslagen toernooien hebben nog geen Elo). Dit is de BEGIN-Elo en wordt nooit aangepast. */
     let _eloSrc = null, _eloMap = null;
-    function eloFor(t, id) {
+    function baseElo(t, id) {
         const x = t.teams.find(q => q.id === id);
         if (x && typeof x.elo === "number") return x.elo;
         if (typeof MASTER_CLUBS !== "undefined") {
@@ -407,12 +407,76 @@ const TEngine = (() => {
         }
         return null;
     }
-    /* Verwachte doelpunten per team: 1,35 gemiddeld, verschoven door het Elo-verschil (200 punten verschil ≈ 72% puntenverwachting). Zonder Elo: gelijke kans. */
-    function eloGoals(t, homeId, awayId) {
-        const a = eloFor(t, homeId), b = eloFor(t, awayId);
-        const x = (a == null || b == null) ? 0 : Math.max(-1.2, Math.min(1.2, (a - b) * 0.0022));
-        return [Math.min(9, poisson(1.35 * Math.exp(x))), Math.min(9, poisson(1.35 * Math.exp(-x)))];
+    /* Simulatie-instellingen per toernooi. Zonder t.sim (oude toernooien) blijft het klassieke model gelden.
+       k = hoe sterk de Elo meebeweegt (0 = vast), chaos = hoe zwaar het Elo-verschil doorweegt (1 = normaal), home = thuisvoordeel in Elo-punten. */
+    const SIM_DEF = { k: 20, chaos: 1, home: 40 };
+    function simCfg(t) {
+        if (!t.sim) return null;
+        const n = (v, d) => (typeof v === "number" && isFinite(v)) ? v : d;
+        return { k: Math.max(0, Math.min(100, n(t.sim.k, SIM_DEF.k))), chaos: Math.max(0, Math.min(3, n(t.sim.chaos, SIM_DEF.chaos))), home: Math.max(0, Math.min(200, n(t.sim.home, SIM_DEF.home))) };
     }
+    /* Thuisvoordeel geldt niet bij een knock-outronde met één wedstrijd (neutraal veld) */
+    function neutralMatch(t, idx, m) {
+        const ph = t.phases[idx];
+        if (!ph || ph.type !== "knockout") return false;
+        const tie = (ph.ties || []).find(x => x.id === m.tie);
+        return !!tie && tie.legs === 1;
+    }
+    /* Huidige Elo's binnen DIT toernooi: begin-Elo + alle tot nu toe gespeelde wedstrijden opnieuw afgespeeld.
+       Wordt telkens berekend uit de uitslagen, dus aanpassen of wissen van een uitslag klopt vanzelf en andere toernooien blijven onaangetast. */
+    function liveRatings(t) {
+        const R = new Map(), cfg = simCfg(t);
+        for (const x of t.teams) { const e = baseElo(t, x.id); if (e != null) R.set(x.id, e); }
+        if (!cfg || !cfg.k) return R;
+        t.phases.forEach((ph, idx) => {
+            const ms = (ph.matches || []).map((m, i) => [m, i]).filter(([m]) => m.h != null && m.a != null && R.has(m.home) && R.has(m.away))
+                .sort((x, y) => ((x[0].day || 0) - (y[0].day || 0)) || (x[1] - y[1]));
+            for (const [m] of ms) {
+                const hb = neutralMatch(t, idx, m) ? 0 : cfg.home;
+                const dr = R.get(m.home) - R.get(m.away) + hb;
+                const we = 1 / (1 + Math.pow(10, -dr / 400));
+                const w = m.h > m.a ? 1 : m.h < m.a ? 0 : 0.5;
+                const n = Math.abs(m.h - m.a), g = n <= 1 ? 1 : n === 2 ? 1.5 : (11 + n) / 8;
+                const d = cfg.k * g * (w - we);
+                R.set(m.home, R.get(m.home) + d); R.set(m.away, R.get(m.away) - d);
+            }
+        });
+        return R;
+    }
+    function eloFor(t, id) {
+        if (simCfg(t) && simCfg(t).k) { const v = liveRatings(t).get(id); return v == null ? null : v; }
+        return baseElo(t, id);
+    }
+    /* Overzicht begin-Elo → huidige Elo, voor de statistieken */
+    function eloTable(t) {
+        const cfg = simCfg(t); if (!cfg || !cfg.k) return [];
+        const R = liveRatings(t);
+        return t.teams.filter(x => R.has(x.id)).map(x => { const s = baseElo(t, x.id), n = R.get(x.id); return { id: x.id, start: Math.round(s), now: Math.round(n), diff: Math.round(n) - Math.round(s) }; }).sort((a, b) => b.now - a.now);
+    }
+    /* Doelpunten uit de Poisson-verdeling met Dixon-Coles-correctie: iets meer 0-0 en 1-1, iets minder 1-0 en 0-1 */
+    function dcSample(lh, la) {
+        const rho = -0.1, M = 10, pm = l => { const p = [Math.exp(-l)]; for (let k = 1; k < M; k++) p.push(p[k - 1] * l / k); return p; };
+        const ph = pm(lh), pa = pm(la), tau = (i, j) => i === 0 && j === 0 ? 1 - lh * la * rho : i === 0 && j === 1 ? 1 + lh * rho : i === 1 && j === 0 ? 1 + la * rho : i === 1 && j === 1 ? 1 - rho : 1;
+        let tot = 0; const w = [];
+        for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) { const v = ph[i] * pa[j] * tau(i, j); w.push(v); tot += v; }
+        let r = rnd() * tot;
+        for (let k = 0; k < w.length; k++) { r -= w[k]; if (r <= 0) return [Math.floor(k / M), k % M]; }
+        return [1, 1];
+    }
+    /* Verwachte doelpunten.
+       Klassiek (oude toernooien): 1,35 gemiddeld per team, verschoven door het Elo-verschil.
+       Nieuw model: totaal ~2,7 doelpunten per wedstrijd, verdeeld naar het (live) Elo-verschil incl. thuisvoordeel en chaos-factor. Zonder Elo: gelijke kans. */
+    function eloGoals(t, homeId, awayId, neutral) {
+        const a = eloFor(t, homeId), b = eloFor(t, awayId), cfg = simCfg(t);
+        if (!cfg) {
+            const x = (a == null || b == null) ? 0 : Math.max(-1.2, Math.min(1.2, (a - b) * 0.0022));
+            return [Math.min(9, poisson(1.35 * Math.exp(x))), Math.min(9, poisson(1.35 * Math.exp(-x)))];
+        }
+        const diff = (a == null || b == null) ? 0 : (a - b) + (neutral ? 0 : cfg.home);
+        const x = Math.max(-1.2, Math.min(1.2, diff * 0.0022 * cfg.chaos)), s = 1 / (1 + Math.exp(-2 * x));
+        return dcSample(2.7 * s, 2.7 * (1 - s));
+    }
+    function matchGoals(t, idx, m) { return eloGoals(t, m.home, m.away, neutralMatch(t, idx, m)); }
     /* Strafschoppen: bijna een muntworp, met een kleine voorsprong voor het sterkere team (max 60/40). */
     function penPick(t, ta, tb) {
         const a = eloFor(t, ta), b = eloFor(t, tb);
@@ -439,7 +503,7 @@ const TEngine = (() => {
         const ph = t.phases[idx], none = new Set();
         const m = pendingMatches(ph)[0];
         if (m) {
-            const [h, a] = eloGoals(t, m.home, m.away);
+            const [h, a] = matchGoals(t, idx, m);
             setScore(t, idx, m.id, h, a);
             simPens(t, idx, none);
             return { m, h, a };
@@ -447,18 +511,63 @@ const TEngine = (() => {
         if (simPens(t, idx, none) > 0) return { pens: true };
         return null;
     }
+    /* Simuleert één hele ronde: bij competitie/groepen/league phase de eerstvolgende speeldag, bij knock-out de eerstvolgende ronde (beide wedstrijden bij heen & terug) */
+    function simRound(t, idx) {
+        const ph = t.phases[idx], none = new Set();
+        const pend = pendingMatches(ph);
+        if (!pend.length) { const n = simPens(t, idx, none); return n ? { n: 0, pens: n, label: null } : null; }
+        const roundOf = m => { if (ph.type === "knockout") { const tie = ph.ties.find(x => x.id === m.tie); return tie ? tie.round : 0; } return m.day || 0; };
+        const r = Math.min(...pend.map(roundOf));
+        const batch = pend.filter(m => roundOf(m) === r);
+        const label = ph.type === "knockout" ? (batch[0].stage || "Ronde " + r) : "Speeldag " + r;
+        const ids = batch.map(m => m.id);
+        for (const id of ids) {
+            const m = ph.matches.find(x => x.id === id);
+            if (!m || m.h != null) continue;
+            const [h, a] = matchGoals(t, idx, m);
+            setScore(t, idx, id, h, a);
+        }
+        simPens(t, idx, none);
+        return { n: ids.length, label };
+    }
     /* Simuleert alle openstaande wedstrijden, behalve die waar een team uit `excluded` aan meedoet */
     function simAll(t, idx, excluded) {
         const ph = t.phases[idx]; let n = 0;
         for (let guard = 0; guard < 5000; guard++) {
             const m = pendingMatches(ph).find(x => !excluded.has(x.home) && !excluded.has(x.away));
-            if (m) { { const [gh, ga] = eloGoals(t, m.home, m.away); setScore(t, idx, m.id, gh, ga); } n++; simPens(t, idx, excluded); continue; }
+            if (m) { { const [gh, ga] = matchGoals(t, idx, m); setScore(t, idx, m.id, gh, ga); } n++; simPens(t, idx, excluded); continue; }
             if (simPens(t, idx, excluded) > 0) continue;
             break;
         }
         return n;
     }
 
+    /* Teams die nog in de top `n` kunnen eindigen (bij groepen: top n van hun groep). Een team valt af zodra n teams al meer punten hebben dan het nog maximaal kan halen.
+       Bij gelijke punten blijft iedereen "mogelijk" (doelsaldo etc. is nog open); onderlinge duels tussen de anderen tellen niet mee, dus dit is een ruime schatting. */
+    function canReachTop(t, idx, n) {
+        const ph = t.phases[idx];
+        if (!ph || !ph.entrants || !ph.matches || ph.type === "knockout") return [];
+        const per = Math.max(t.rules.win, t.rules.draw, t.rules.loss, 0);
+        const sets = ph.type === "groups" ? ph.groups.map((g, gi) => ({ ids: g.ids, ms: ph.matches.filter(m => m.group === gi) })) : [{ ids: ph.entrants, ms: ph.matches }];
+        const out = [];
+        for (const { ids, ms } of sets) {
+            const rows = standings(ids, ms.filter(m => m.h != null && m.a != null), t.rules, t.rules.tiebreak);
+            const max = new Map(rows.map(r => [r.id, r.pts + ms.filter(m => (m.h == null || m.a == null) && (m.home === r.id || m.away === r.id)).length * per]));
+            for (const r of rows) if (rows.filter(o => o.id !== r.id && o.pts > max.get(r.id)).length < n) out.push(r.id);
+        }
+        return out;
+    }
+    /* Stand na elke speeldag (competitie / league phase): lijst van { day, played, total, rows } tot en met de laatste speeldag waarin iets gespeeld is */
+    function standingsHistory(t, ph) {
+        if (!ph || !ph.entrants || !ph.matches) return [];
+        const days = [...new Set(ph.matches.filter(m => m.day).map(m => m.day))].sort((a, b) => a - b);
+        const played = m => m.h != null && m.a != null;
+        const last = Math.max(0, ...ph.matches.filter(m => m.day && played(m)).map(m => m.day));
+        return days.filter(d => d <= last).map(d => {
+            const dm = ph.matches.filter(m => m.day === d);
+            return { day: d, played: dm.filter(played).length, total: dm.length, rows: standings(ph.entrants, ph.matches.filter(m => m.day && m.day <= d), t.rules, t.rules.tiebreak) };
+        });
+    }
     /* ---------- statistieken ---------- */
     function allPlayed(t) {
         const out = [];
@@ -577,10 +686,10 @@ const TEngine = (() => {
         });
         return { errors, info };
     }
-    function create(name, teams, phases, rules) {
+    function create(name, teams, phases, rules, sim) {
         const t = {
             id: uid(), name, createdAt: Date.now(), seq: 0, v2: true,
-            teams: teams.map(x => ({ ...x })), rules: { ...rules },
+            teams: teams.map(x => ({ ...x })), rules: { ...rules }, sim: sim ? { ...sim } : undefined,
             phases: phases.map(p => ({ id: uid(), type: p.type, name: p.name, cfg: JSON.parse(JSON.stringify(p.cfg)), advance: p.advance == null ? null : Math.floor(+p.advance), routes: (p.routes || []).map(r => ({ count: Math.floor(+r.count), dest: +r.dest })), status: "pending", entrants: null, matches: [], ties: null, groups: null, ranking: null }))
         };
         startPhase(t, 0);
@@ -591,6 +700,6 @@ const TEngine = (() => {
         return last && last.status === "done" && last.ranking ? last.ranking[0] : null;
     }
 
-    return { qualify, shuffle, nextPow2, uid, TYPE_LABEL, roundRobin, standings, groupTables, phaseTable, computeRanking, isComplete, progress, startPhase, resetFrom, laterStarted, played, setScore, setPens, simNext, simAll, pendingMatches, refreshPhase, overallStats, allPlayed, template, newPhaseDraft, plan, create, champion, swissGraph, potChoice };
+    return { qualify, shuffle, nextPow2, uid, TYPE_LABEL, roundRobin, standings, groupTables, phaseTable, computeRanking, isComplete, progress, startPhase, resetFrom, laterStarted, played, setScore, setPens, simNext, simRound, simAll, eloTable, simCfg, SIM_DEF, canReachTop, pendingMatches, refreshPhase, overallStats, standingsHistory, allPlayed, template, newPhaseDraft, plan, create, champion, swissGraph, potChoice };
 })();
 if (typeof module !== "undefined") module.exports = TEngine;
